@@ -17,12 +17,12 @@ const defaults = (): AppSettings => ({
     process.env.MOVIES_PATH?.trim() ||
     (process.env.DOWNLOAD_PATH?.trim()
       ? path.join(process.env.DOWNLOAD_PATH.trim(), "Movies")
-      : "Z:\\Jellyfin\\Movies"),
+      : path.join(path.sep, "raid", "Jellyfin", "Movies")),
   tvShowsPath:
     process.env.TV_SHOWS_PATH?.trim() ||
     (process.env.DOWNLOAD_PATH?.trim()
       ? path.join(process.env.DOWNLOAD_PATH.trim(), "TV-Shows")
-      : "Z:\\Jellyfin\\TV-Shows"),
+      : path.join(path.sep, "raid", "Jellyfin", "TV-Shows")),
 });
 
 async function ensureDataDir() {
@@ -77,6 +77,10 @@ function collapseDupLeaf(p: string, leaf: string): string {
   }
   if (norm.startsWith("\\\\")) {
     return "\\\\" + parts.join("\\");
+  }
+  // Unix absolute — leading "/" is lost by filter(Boolean)
+  if (norm.startsWith("/")) {
+    return "/" + parts.join("/");
   }
   return parts.join(path.sep);
 }

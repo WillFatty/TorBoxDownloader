@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useState } from "react";
+import { formatBytes, formatSpeed } from "@/lib/comet";
 import type { DownloadJob } from "@/lib/types";
 
 export function DownloadsPage() {
@@ -21,85 +22,122 @@ export function DownloadsPage() {
 
   useEffect(() => {
     void refresh();
-    const id = setInterval(() => void refresh(), 2500);
+    const id = setInterval(() => void refresh(), 1500);
     return () => clearInterval(id);
   }, []);
 
   return (
-    <div className="mx-auto max-w-4xl space-y-6 px-4 py-8 sm:px-6">
-      <div className="flex items-end justify-between gap-4">
+    <div className="page-shell page-enter">
+      <div className="page-header">
         <div>
-          <h1 className="font-[family-name:var(--font-display)] text-3xl text-[var(--ink)]">
-            Downloads
-          </h1>
-          <p className="mt-2 text-[var(--muted)]">
-            TorBox progress + local save status.
-          </p>
+          <p className="page-kicker">Queue</p>
+          <h1 className="page-title">Downloads</h1>
+          <p className="page-desc">TorBox progress + local save status.</p>
         </div>
-        <button type="button" className="btn-secondary" onClick={() => void refresh()}>
+        <button
+          type="button"
+          className="btn-secondary"
+          onClick={() => void refresh()}
+        >
           Refresh
         </button>
       </div>
 
-      {error && <p className="text-sm text-red-400">{error}</p>}
+      {error && (
+        <p className="mb-4 text-sm text-[var(--danger)]">{error}</p>
+      )}
 
       {!jobs.length ? (
-        <p className="text-[var(--muted)]">No downloads yet.</p>
+        <div className="panel flex min-h-[12rem] items-center justify-center p-8">
+          <p className="text-[var(--muted)]">No downloads yet.</p>
+        </div>
       ) : (
         <ul className="space-y-3">
-          {jobs.map((job) => (
-            <li
-              key={job.id}
-              className="rounded-xl border border-[var(--line)] bg-[var(--panel)] p-4"
-            >
-              <div className="flex flex-wrap items-start justify-between gap-2">
-                <div>
-                  <div className="font-medium text-[var(--ink)]">{job.fileName}</div>
-                  <div className="mt-1 font-mono text-xs text-[var(--muted)]">
-                    {job.downloadPath}
+          {jobs.map((job) => {
+            const speed = formatSpeed(job.speedBytesPerSec);
+            const transferred =
+              job.bytesDownloaded > 0
+                ? [
+                    formatBytes(job.bytesDownloaded),
+                    job.bytesTotal > 0 ? formatBytes(job.bytesTotal) : null,
+                  ]
+                    .filter(Boolean)
+                    .join(" / ")
+                : null;
+            const active =
+              job.status !== "completed" &&
+              job.status !== "failed" &&
+              job.status !== "cancelled";
+            return (
+              <li key={job.id} className="panel p-4 sm:p-5">
+                <div className="flex flex-wrap items-start justify-between gap-2">
+                  <div className="min-w-0">
+                    <div className="font-semibold text-[var(--ink)]">
+                      {job.fileName}
+                    </div>
+                    <div className="mt-1.5 truncate font-mono text-xs text-[var(--muted)]">
+                      {job.downloadPath}
+                    </div>
                   </div>
+                  <span
+                    className={`badge uppercase tracking-wide ${
+                      job.status === "completed"
+                        ? "bg-[var(--accent-soft)] text-[var(--accent)]"
+                        : job.status === "failed"
+                          ? "bg-[var(--danger)]/15 text-[var(--danger)]"
+                          : "bg-[var(--line)] text-[var(--muted)]"
+                    }`}
+                  >
+                    {job.status.replace(/_/g, " ")}
+                  </span>
                 </div>
-                <span className="rounded bg-[var(--line)] px-2 py-0.5 text-xs uppercase tracking-wide text-[var(--muted)]">
-                  {job.status.replace(/_/g, " ")}
-                </span>
-              </div>
-              <div className="mt-3 h-2 overflow-hidden rounded bg-[var(--line)]">
-                <div
-                  className="h-full bg-[var(--accent)] transition-all"
-                  style={{ width: `${job.progress}%` }}
-                />
-              </div>
-              <div className="mt-2 flex flex-wrap gap-3 text-xs text-[var(--muted)]">
-                <span>{job.progress}%</span>
-                <span>
-                  {job.mediaName}
-                  {job.season != null && job.episode != null
-                    ? ` S${String(job.season).padStart(2, "0")}E${String(job.episode).padStart(2, "0")}`
-                    : ""}
-                </span>
-                <span>{job.quality}</span>
-                {job.torboxTorrentId != null && (
-                  <span>torrent #{job.torboxTorrentId}</span>
+                <div className="progress-track mt-4">
+                  <div
+                    className="progress-fill"
+                    style={{
+                      width: `${job.progress}%`,
+                      animationPlayState: active ? "running" : "paused",
+                    }}
+                  />
+                </div>
+                <div className="mt-2.5 flex flex-wrap gap-x-3 gap-y-1 text-xs text-[var(--muted)]">
+                  <span>{job.progress}%</span>
+                  {transferred && <span>{transferred}</span>}
+                  {speed && <span>{speed}</span>}
+                  <span>
+                    {job.mediaName}
+                    {job.season != null && job.episode != null
+                      ? ` S${String(job.season).padStart(2, "0")}E${String(job.episode).padStart(2, "0")}`
+                      : ""}
+                  </span>
+                  <span>{job.quality}</span>
+                  {job.torboxTorrentId != null && (
+                    <span>torrent #{job.torboxTorrentId}</span>
+                  )}
+                </div>
+                {job.error && (
+                  <p className="mt-2 text-sm text-[var(--danger)]">{job.error}</p>
                 )}
-              </div>
-              {job.error && (
-                <p className="mt-2 text-sm text-red-400">{job.error}</p>
-              )}
-              {job.packSummary && (
-                <p className="mt-2 text-sm text-violet-300">{job.packSummary}</p>
-              )}
-              {job.savedFiles?.length > 1 && (
-                <details className="mt-2 text-xs text-[var(--muted)]">
-                  <summary>{job.savedFiles.length} saved files</summary>
-                  <ul className="mt-1 max-h-40 space-y-1 overflow-y-auto font-mono">
-                    {job.savedFiles.map((f) => (
-                      <li key={f}>{f}</li>
-                    ))}
-                  </ul>
-                </details>
-              )}
-            </li>
-          ))}
+                {job.packSummary && (
+                  <p className="mt-2 text-sm text-[var(--violet)]">
+                    {job.packSummary}
+                  </p>
+                )}
+                {job.savedFiles?.length > 1 && (
+                  <details className="mt-2 text-xs text-[var(--muted)]">
+                    <summary className="cursor-pointer hover:text-[var(--ink-soft)]">
+                      {job.savedFiles.length} saved files
+                    </summary>
+                    <ul className="mt-1.5 max-h-40 space-y-1 overflow-y-auto font-mono">
+                      {job.savedFiles.map((f) => (
+                        <li key={f}>{f}</li>
+                      ))}
+                    </ul>
+                  </details>
+                )}
+              </li>
+            );
+          })}
         </ul>
       )}
     </div>

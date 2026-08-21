@@ -17,8 +17,8 @@ cp .env.example .env
 
 - `TORBOX_API_KEY` — from TorBox settings
 - `COMET_URL` — public `https://comet.elfhosted.com` or your self-hosted Comet
-- `MOVIES_PATH` — e.g. `Z:\Jellyfin\Movies`
-- `TV_SHOWS_PATH` — e.g. `Z:\Jellyfin\TV-Shows`
+- `MOVIES_PATH` — e.g. `/raid/Jellyfin/Movies`
+- `TV_SHOWS_PATH` — e.g. `/raid/Jellyfin/TV-Shows`
 - `SITE_PASSWORD` — password gate for the website
 
 3. Install & run:

@@ -41,6 +41,11 @@ export function formatBytes(bytes: number | null | undefined): string | null {
   return `${value.toFixed(value >= 10 || i === 0 ? 0 : 1)} ${units[i]}`;
 }
 
+export function formatSpeed(bytesPerSec: number | null | undefined): string | null {
+  const formatted = formatBytes(bytesPerSec);
+  return formatted ? `${formatted}/s` : null;
+}
+
 function parseSizeFromText(text: string): number | null {
   const match = text.match(/(\d+(?:\.\d+)?)\s*(TiB|GiB|MiB|TB|GB|MB|KB)\b/i);
   if (!match) return null;

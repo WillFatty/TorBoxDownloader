@@ -1,19 +1,81 @@
 const TORBOX = "https://api.torbox.app/v1";
+const DEFAULT_TIMEOUT_MS = 25_000;
 
 export class TorBoxError extends Error {
   constructor(
     message: string,
     public status?: number,
+    public code?: string,
   ) {
     super(message);
     this.name = "TorBoxError";
   }
 }
 
+const TRANSIENT_CODES = new Set([
+  "DATABASE_ERROR",
+  "UNKNOWN_ERROR",
+  "TIMEOUT",
+]);
+
+export function isTransientTorBoxError(err: unknown): boolean {
+  if (err instanceof TorBoxError) {
+    if (err.status != null && err.status >= 500) return true;
+    const code = (err.code || "").toUpperCase();
+    if (TRANSIENT_CODES.has(code)) return true;
+    return /database_error|try again later|temporarily|timed out/i.test(
+      err.message,
+    );
+  }
+  if (err instanceof Error) {
+    if (err.name === "AbortError") return true;
+    return /timeout|network|fetch failed|econnreset|etimedout/i.test(
+      err.message,
+    );
+  }
+  return false;
+}
+
+function sleep(ms: number) {
+  return new Promise((r) => setTimeout(r, ms));
+}
+
+async function withRetry<T>(
+  fn: () => Promise<T>,
+  opts?: { attempts?: number; baseMs?: number },
+): Promise<T> {
+  const attempts = opts?.attempts ?? 5;
+  const baseMs = opts?.baseMs ?? 800;
+  let last: unknown;
+  for (let i = 0; i < attempts; i++) {
+    try {
+      return await fn();
+    } catch (err) {
+      last = err;
+      if (!isTransientTorBoxError(err) || i === attempts - 1) throw err;
+      const wait = Math.min(12_000, baseMs * 2 ** i) + Math.floor(Math.random() * 300);
+      await sleep(wait);
+    }
+  }
+  throw last;
+}
+
+/** Serialize link requests so parallel jobs don't hammer requestdl. */
+let linkChain: Promise<void> = Promise.resolve();
+
+function enqueueExclusive<T>(fn: () => Promise<T>): Promise<T> {
+  const run = linkChain.then(fn, fn);
+  linkChain = run.then(
+    () => undefined,
+    () => undefined,
+  );
+  return run;
+}
+
 async function torboxFetch(
   apiKey: string,
   path: string,
-  init?: RequestInit & { form?: Record<string, string> },
+  init?: RequestInit & { form?: Record<string, string>; timeoutMs?: number },
 ) {
   const headers = new Headers(init?.headers);
   headers.set("Authorization", `Bearer ${apiKey}`);
@@ -27,27 +89,50 @@ async function torboxFetch(
     body = form;
   }
 
-  const res = await fetch(`${TORBOX}${path}`, {
-    ...init,
-    headers,
-    body,
-    cache: "no-store",
-  });
+  const timeoutMs = init?.timeoutMs ?? DEFAULT_TIMEOUT_MS;
+  const controller = new AbortController();
+  const timer = setTimeout(() => controller.abort(), timeoutMs);
 
-  const json = (await res.json().catch(() => null)) as {
-    success?: boolean;
-    error?: string;
-    detail?: string;
-    data?: unknown;
-  } | null;
+  try {
+    const res = await fetch(`${TORBOX}${path}`, {
+      method: init?.method,
+      headers,
+      body,
+      cache: "no-store",
+      signal: controller.signal,
+    });
 
-  if (!res.ok || json?.success === false) {
-    throw new TorBoxError(
-      json?.error || json?.detail || `TorBox request failed (${res.status})`,
-      res.status,
-    );
+    const json = (await res.json().catch(() => null)) as {
+      success?: boolean;
+      error?: string;
+      detail?: string;
+      data?: unknown;
+    } | null;
+
+    if (!res.ok || json?.success === false) {
+      const code = typeof json?.error === "string" ? json.error : undefined;
+      throw new TorBoxError(
+        json?.detail || code || `TorBox request failed (${res.status})`,
+        res.status,
+        code,
+      );
+    }
+    return json;
+  } catch (err) {
+    if (
+      err instanceof Error &&
+      (err.name === "AbortError" || /aborted/i.test(err.message))
+    ) {
+      throw new TorBoxError(
+        `TorBox request timed out after ${timeoutMs}ms`,
+        504,
+        "TIMEOUT",
+      );
+    }
+    throw err;
+  } finally {
+    clearTimeout(timer);
   }
-  return json;
 }
 
 export interface TorBoxFile {
@@ -68,26 +153,38 @@ export interface TorBoxTorrent {
   files?: TorBoxFile[];
 }
 
+/** Normalize TorBox progress to 0–1 (API may send 0–1 or 0–100). */
+export function normalizeTorrentProgress(
+  progress: number | null | undefined,
+): number {
+  if (progress == null || !Number.isFinite(progress)) return 0;
+  if (progress > 1) return Math.min(1, progress / 100);
+  return Math.max(0, Math.min(1, progress));
+}
+
 export async function createTorrent(
   apiKey: string,
   magnet: string,
   name?: string,
 ): Promise<{ torrent_id: number; hash: string }> {
-  const json = await torboxFetch(apiKey, "/api/torrents/createtorrent", {
-    method: "POST",
-    form: {
-      magnet,
-      ...(name ? { name } : {}),
-    },
+  return withRetry(async () => {
+    const json = await torboxFetch(apiKey, "/api/torrents/createtorrent", {
+      method: "POST",
+      form: {
+        magnet,
+        ...(name ? { name } : {}),
+      },
+      timeoutMs: 45_000,
+    });
+    const data = json?.data as { torrent_id?: number; hash?: string } | undefined;
+    if (data?.torrent_id == null) {
+      throw new TorBoxError("TorBox did not return a torrent id");
+    }
+    return {
+      torrent_id: data.torrent_id,
+      hash: data.hash || "",
+    };
   });
-  const data = json?.data as { torrent_id?: number; hash?: string } | undefined;
-  if (data?.torrent_id == null) {
-    throw new TorBoxError("TorBox did not return a torrent id");
-  }
-  return {
-    torrent_id: data.torrent_id,
-    hash: data.hash || "",
-  };
 }
 
 export async function getTorrentList(
@@ -98,9 +195,12 @@ export async function getTorrentList(
   if (opts?.id != null) params.set("id", String(opts.id));
   if (opts?.bypassCache) params.set("bypass_cache", "true");
   const qs = params.toString();
-  const json = await torboxFetch(
-    apiKey,
-    `/api/torrents/mylist${qs ? `?${qs}` : ""}`,
+  const json = await withRetry(
+    () =>
+      torboxFetch(apiKey, `/api/torrents/mylist${qs ? `?${qs}` : ""}`, {
+        timeoutMs: 20_000,
+      }),
+    { attempts: 3, baseMs: 600 },
   );
   return json?.data as TorBoxTorrent | TorBoxTorrent[];
 }
@@ -108,8 +208,12 @@ export async function getTorrentList(
 export async function getTorrentById(
   apiKey: string,
   id: number,
+  opts?: { bypassCache?: boolean },
 ): Promise<TorBoxTorrent | null> {
-  const data = await getTorrentList(apiKey, { id, bypassCache: true });
+  const data = await getTorrentList(apiKey, {
+    id,
+    bypassCache: opts?.bypassCache ?? true,
+  });
   if (!data) return null;
   return Array.isArray(data) ? data[0] || null : data;
 }
@@ -119,14 +223,20 @@ export async function checkCached(
   hashes: string[],
 ): Promise<Record<string, boolean>> {
   if (!hashes.length) return {};
-  const unique = [...new Set(hashes.map((h) => h.trim().toLowerCase()).filter(Boolean))];
+  const unique = [
+    ...new Set(hashes.map((h) => h.trim().toLowerCase()).filter(Boolean)),
+  ];
   const out: Record<string, boolean> = {};
   for (const hash of unique) out[hash] = false;
 
   const chunkSize = 40;
   for (let i = 0; i < unique.length; i += chunkSize) {
     const chunk = unique.slice(i, i + chunkSize);
-    Object.assign(out, await checkCachedChunk(apiKey, chunk));
+    try {
+      Object.assign(out, await checkCachedChunk(apiKey, chunk));
+    } catch {
+      // Soft-fail: keep unknown/false badges rather than breaking stream list
+    }
   }
   return out;
 }
@@ -147,7 +257,6 @@ function parseCachedPayload(
   for (const hash of requested) out[hash] = false;
   if (!data) return out;
 
-  // format=list → [{ hash, name, size }, ...] (only cached entries)
   if (Array.isArray(data)) {
     for (const item of data) {
       if (typeof item === "string") {
@@ -160,13 +269,16 @@ function parseCachedPayload(
     return out;
   }
 
-  // format=object → { [hash]: true | false | { name, size, ... } }
   if (typeof data === "object") {
     for (const [key, value] of Object.entries(data as Record<string, unknown>)) {
       const hash = key.trim().toLowerCase();
       if (value === false || value === null || value === 0 || value === "false") {
         out[hash] = false;
-      } else if (value === true || typeof value === "object" || value === "true") {
+      } else if (
+        value === true ||
+        typeof value === "object" ||
+        value === "true"
+      ) {
         out[hash] = true;
       }
     }
@@ -178,20 +290,24 @@ async function checkCachedChunk(
   apiKey: string,
   hashes: string[],
 ): Promise<Record<string, boolean>> {
-  // Prefer list format — unambiguous array of cached hashes
   const params = new URLSearchParams();
   params.set("hash", hashes.join(","));
   params.set("format", "list");
 
-  const json = await torboxFetch(
-    apiKey,
-    `/api/torrents/checkcached?${params.toString()}`,
+  const json = await withRetry(
+    () =>
+      torboxFetch(apiKey, `/api/torrents/checkcached?${params.toString()}`, {
+        timeoutMs: 20_000,
+      }),
+    { attempts: 3, baseMs: 600 },
   );
   return parseCachedPayload(json?.data, hashes);
 }
 
 /** Comet often marks debrid cache in name/title when TorBox configured on instance. */
-export function detectCachedHint(...parts: Array<string | null | undefined>): boolean | null {
+export function detectCachedHint(
+  ...parts: Array<string | null | undefined>
+): boolean | null {
   const blob = parts.filter(Boolean).join("\n");
   if (!blob) return null;
   if (
@@ -206,26 +322,33 @@ export function detectCachedHint(...parts: Array<string | null | undefined>): bo
   return null;
 }
 
-
 export async function requestDownloadLink(
   apiKey: string,
   torrentId: number,
   fileId: number,
 ): Promise<string> {
-  const params = new URLSearchParams({
-    token: apiKey,
-    torrent_id: String(torrentId),
-    file_id: String(fileId),
-  });
-  const json = await torboxFetch(
-    apiKey,
-    `/api/torrents/requestdl?${params.toString()}`,
+  return enqueueExclusive(() =>
+    withRetry(
+      async () => {
+        const params = new URLSearchParams({
+          token: apiKey,
+          torrent_id: String(torrentId),
+          file_id: String(fileId),
+        });
+        const json = await torboxFetch(
+          apiKey,
+          `/api/torrents/requestdl?${params.toString()}`,
+          { timeoutMs: 30_000 },
+        );
+        const link = json?.data;
+        if (typeof link !== "string" || !link) {
+          throw new TorBoxError("TorBox did not return a download link");
+        }
+        return link;
+      },
+      { attempts: 6, baseMs: 700 },
+    ),
   );
-  const link = json?.data;
-  if (typeof link !== "string" || !link) {
-    throw new TorBoxError("TorBox did not return a download link");
-  }
-  return link;
 }
 
 export function pickBestVideoFile(
@@ -243,6 +366,8 @@ export function pickBestVideoFile(
 
 export function isTorrentReady(t: TorBoxTorrent): boolean {
   if (t.download_finished) return true;
+  if (normalizeTorrentProgress(t.progress) >= 1) return true;
   const state = (t.download_state || "").toLowerCase();
-  return state === "cached" || state === "completed" || state === "uploading";
+  // TorBox docs: don't use "completed" alone for readiness
+  return state === "cached" || state === "uploading";
 }

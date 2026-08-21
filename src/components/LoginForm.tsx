@@ -37,21 +37,69 @@ export function LoginForm() {
   }
 
   return (
-    <div className="mx-auto flex min-h-[70vh] max-w-md flex-col justify-center px-4 py-12">
-      <div className="rounded-2xl border border-[var(--line)] bg-[var(--panel)] p-6 sm:p-8">
-        <h1 className="font-[family-name:var(--font-display)] text-3xl text-[var(--ink)]">
-          TorBox Downloader
-        </h1>
-        <p className="mt-2 text-sm text-[var(--muted)]">
-          Enter password to continue.
+    <div
+      className="page-enter"
+      style={{
+        position: "relative",
+        display: "flex",
+        minHeight: "100vh",
+        flexDirection: "column",
+        alignItems: "center",
+        justifyContent: "center",
+        overflow: "hidden",
+        padding: "4rem 1.25rem",
+      }}
+    >
+      <div
+        className="ambient-orb"
+        style={{
+          left: "-6rem",
+          top: "25%",
+          width: "18rem",
+          height: "18rem",
+          background: "color-mix(in srgb, var(--accent) 20%, transparent)",
+        }}
+        aria-hidden
+      />
+      <div
+        className="ambient-orb"
+        style={{
+          right: "-4rem",
+          bottom: "25%",
+          width: "16rem",
+          height: "16rem",
+          background: "color-mix(in srgb, var(--info) 15%, transparent)",
+          animationDelay: "2s",
+        }}
+        aria-hidden
+      />
+
+      <div style={{ position: "relative", zIndex: 1, width: "100%", maxWidth: "22rem", textAlign: "center" }}>
+        <p className="display" style={{ margin: 0, fontSize: "clamp(2.5rem, 8vw, 3.5rem)", color: "var(--ink)" }}>
+          TorBox<span className="text-accent">DL</span>
+        </p>
+        <p className="muted" style={{ margin: "1rem auto 0", maxWidth: "18rem", fontSize: "0.95rem" }}>
+          Stream search to local library — unlock to continue.
         </p>
 
-        <form onSubmit={onSubmit} className="mt-6 space-y-4">
-          <label className="block space-y-1.5">
-            <span className="text-sm text-[var(--muted)]">Password</span>
+        <form onSubmit={onSubmit} style={{ marginTop: "2.5rem", display: "flex", flexDirection: "column", gap: "1rem", textAlign: "left" }}>
+          <label style={{ display: "block" }}>
+            <span
+              className="muted"
+              style={{
+                display: "block",
+                marginBottom: "0.5rem",
+                fontSize: "0.7rem",
+                fontWeight: 650,
+                letterSpacing: "0.12em",
+                textTransform: "uppercase",
+              }}
+            >
+              Password
+            </span>
             <input
               type="password"
-              className="field w-full"
+              className="field"
               value={password}
               onChange={(e) => setPassword(e.target.value)}
               autoFocus
@@ -59,10 +107,11 @@ export function LoginForm() {
               disabled={setup}
             />
           </label>
-          {error && <p className="text-sm text-red-400">{error}</p>}
+          {error && <p className="text-danger" style={{ margin: 0, fontSize: "0.875rem" }}>{error}</p>}
           <button
             type="submit"
-            className="btn-primary w-full"
+            className="btn-primary"
+            style={{ width: "100%" }}
             disabled={loading || setup || !password}
           >
             {loading ? "Checking…" : "Enter"}

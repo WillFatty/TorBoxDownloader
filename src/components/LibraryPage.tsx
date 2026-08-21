@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useState, type CSSProperties } from "react";
 
 interface LibMovie {
   name: string;
@@ -16,6 +16,59 @@ interface LibShow {
   episodeCount: number;
   folder: string;
   episodes: Array<{ season: number; episode: number; fileName: string }>;
+}
+
+function tileInitials(name: string) {
+  const words = name
+    .replace(/[^\p{L}\p{N}\s]/gu, " ")
+    .trim()
+    .split(/\s+/)
+    .filter(Boolean);
+  if (!words.length) return "?";
+  if (words.length === 1) return words[0].slice(0, 2).toUpperCase();
+  return (words[0][0] + words[1][0]).toUpperCase();
+}
+
+function tileHue(name: string) {
+  let hash = 0;
+  for (let i = 0; i < name.length; i += 1) {
+    hash = (hash * 31 + name.charCodeAt(i)) % 3600;
+  }
+  return hash % 360;
+}
+
+function groupBySeason(episodes: LibShow["episodes"]) {
+  const bySeason = new Map<number, LibShow["episodes"]>();
+  for (const ep of episodes) {
+    const list = bySeason.get(ep.season);
+    if (list) list.push(ep);
+    else bySeason.set(ep.season, [ep]);
+  }
+  return [...bySeason.entries()]
+    .sort((a, b) => a[0] - b[0])
+    .map(([season, eps]) => ({
+      season,
+      eps: [...eps].sort((a, b) => a.episode - b.episode),
+    }));
+}
+
+function Chevron({ open }: { open: boolean }) {
+  return (
+    <svg
+      className={`lib-chev${open ? " is-open" : ""}`}
+      viewBox="0 0 24 24"
+      aria-hidden="true"
+    >
+      <path
+        d="M6 9l6 6 6-6"
+        fill="none"
+        stroke="currentColor"
+        strokeWidth="2"
+        strokeLinecap="round"
+        strokeLinejoin="round"
+      />
+    </svg>
+  );
 }
 
 export function LibraryPage() {
@@ -67,134 +120,256 @@ export function LibraryPage() {
     return shows.filter((s) => s.name.toLowerCase().includes(needle));
   }, [shows, q]);
 
+  const episodeTotal = useMemo(
+    () => shows.reduce((sum, s) => sum + s.episodeCount, 0),
+    [shows],
+  );
+  const movieFileTotal = useMemo(
+    () => movies.reduce((sum, m) => sum + m.fileCount, 0),
+    [movies],
+  );
+
+  const total = tab === "movies" ? movies.length : shows.length;
+  const shown = tab === "movies" ? filteredMovies.length : filteredShows.length;
+  const filtering = q.trim().length > 0;
+
   return (
-    <div className="mx-auto max-w-4xl space-y-6 px-4 py-8 sm:px-6">
-      <div className="flex flex-wrap items-end justify-between gap-4">
+    <div className="page-shell page-shell-wide page-enter">
+      <div className="page-header">
         <div>
-          <h1 className="font-[family-name:var(--font-display)] text-3xl text-[var(--ink)]">
-            Library
-          </h1>
-          <p className="mt-2 text-[var(--muted)]">
-            Scanned Jellyfin libraries
-            {root ? (
-              <>
-                : <code className="text-[var(--accent)]">{root}</code>
-              </>
-            ) : null}
+          <p className="page-kicker">Local</p>
+          <h1 className="page-title">Library</h1>
+          <p className="page-desc">
+            Your scanned Jellyfin collection.
+            {scannedAt
+              ? ` Last scan ${new Date(scannedAt).toLocaleString()}.`
+              : ""}
           </p>
-          {scannedAt && (
-            <p className="mt-1 text-xs text-[var(--muted)]">
-              {movies.length} movies · {shows.length} shows ·{" "}
-              {new Date(scannedAt).toLocaleString()}
+          {root && (
+            <p className="lib-root">
+              <span>Root</span>
+              <code>{root}</code>
             </p>
           )}
         </div>
-        <button type="button" className="btn-secondary" onClick={() => void load()}>
-          Rescan
+        <button
+          type="button"
+          className="btn-secondary"
+          disabled={loading}
+          onClick={() => void load()}
+        >
+          {loading ? "Scanning…" : "Rescan"}
         </button>
       </div>
 
-      <div className="flex flex-col gap-3 sm:flex-row sm:items-center">
-        <div className="flex gap-2">
-          <button
-            type="button"
-            className={`chip ${tab === "movies" ? "chip-active" : ""}`}
-            onClick={() => setTab("movies")}
-          >
-            Movies ({movies.length})
-          </button>
-          <button
-            type="button"
-            className={`chip ${tab === "shows" ? "chip-active" : ""}`}
-            onClick={() => setTab("shows")}
-          >
-            TV Shows ({shows.length})
-          </button>
+      <div className="lib-stats">
+        <div className="lib-stat">
+          <span className="lib-stat-value">{movies.length}</span>
+          <span className="lib-stat-label">Movies</span>
         </div>
-        <input
-          className="field flex-1"
-          placeholder="Filter…"
-          value={q}
-          onChange={(e) => setQ(e.target.value)}
-        />
+        <div className="lib-stat">
+          <span className="lib-stat-value">{shows.length}</span>
+          <span className="lib-stat-label">TV shows</span>
+        </div>
+        <div className="lib-stat">
+          <span className="lib-stat-value">{episodeTotal}</span>
+          <span className="lib-stat-label">Episodes</span>
+        </div>
+        <div className="lib-stat">
+          <span className="lib-stat-value">{movieFileTotal}</span>
+          <span className="lib-stat-label">Movie files</span>
+        </div>
       </div>
 
-      {loading && <p className="text-[var(--muted)]">Scanning…</p>}
-      {error && <p className="text-sm text-red-400">{error}</p>}
+      <div className="lib-toolbar">
+        <div className="segmented">
+          <button
+            type="button"
+            className={tab === "movies" ? "is-active" : ""}
+            onClick={() => setTab("movies")}
+          >
+            Movies
+            <span className="segmented-count">{movies.length}</span>
+          </button>
+          <button
+            type="button"
+            className={tab === "shows" ? "is-active" : ""}
+            onClick={() => setTab("shows")}
+          >
+            TV Shows
+            <span className="segmented-count">{shows.length}</span>
+          </button>
+        </div>
+
+        <div className="lib-search">
+          <input
+            className="field"
+            placeholder={
+              tab === "movies" ? "Filter movies…" : "Filter TV shows…"
+            }
+            value={q}
+            onChange={(e) => setQ(e.target.value)}
+          />
+          {filtering && (
+            <button
+              type="button"
+              className="lib-search-clear"
+              aria-label="Clear filter"
+              onClick={() => setQ("")}
+            >
+              ×
+            </button>
+          )}
+        </div>
+
+        {filtering && (
+          <p className="lib-count">
+            {shown} of {total}
+          </p>
+        )}
+      </div>
+
+      {error && <p className="text-danger lib-message">{error}</p>}
+
+      {loading && (
+        <div className="lib-grid" aria-hidden="true">
+          {Array.from({ length: 9 }).map((_, i) => (
+            <div key={i} className="lib-card lib-skeleton" />
+          ))}
+        </div>
+      )}
 
       {!loading && tab === "movies" && (
-        <ul className="space-y-2">
-          {filteredMovies.map((m) => (
-            <li
-              key={m.folder}
-              className="rounded-xl border border-[var(--line)] bg-[var(--panel)] px-4 py-3"
-            >
-              <button
-                type="button"
-                className="flex w-full items-center justify-between gap-3 text-left"
-                onClick={() =>
-                  setExpanded(expanded === m.folder ? null : m.folder)
-                }
-              >
-                <span className="font-medium text-[var(--ink)]">
-                  {m.name}
-                  {m.year ? ` (${m.year})` : ""}
-                </span>
-                <span className="text-xs text-[var(--muted)]">
-                  {m.fileCount} file{m.fileCount === 1 ? "" : "s"}
-                </span>
-              </button>
-              {expanded === m.folder && (
-                <ul className="mt-2 space-y-1 border-t border-[var(--line)] pt-2 font-mono text-xs text-[var(--muted)]">
-                  {m.files.map((f) => (
-                    <li key={f}>{f}</li>
-                  ))}
-                </ul>
-              )}
-            </li>
-          ))}
-          {!filteredMovies.length && (
-            <p className="text-[var(--muted)]">No movies found.</p>
+        <>
+          {filteredMovies.length ? (
+            <div className="lib-grid">
+              {filteredMovies.map((m) => {
+                const open = expanded === m.folder;
+                return (
+                  <div
+                    key={m.folder}
+                    className={`lib-card${open ? " is-open" : ""}`}
+                  >
+                    <button
+                      type="button"
+                      className="lib-card-head"
+                      aria-expanded={open}
+                      onClick={() => setExpanded(open ? null : m.folder)}
+                    >
+                      <span
+                        className="lib-tile"
+                        style={{ "--tile-hue": tileHue(m.name) } as CSSProperties}
+                      >
+                        {tileInitials(m.name)}
+                      </span>
+                      <span className="lib-card-meta">
+                        <span className="lib-card-title">{m.name}</span>
+                        <span className="lib-card-sub">
+                          {m.year || "Unknown year"} · {m.fileCount} file
+                          {m.fileCount === 1 ? "" : "s"}
+                        </span>
+                      </span>
+                      <Chevron open={open} />
+                    </button>
+                    {open && (
+                      <div className="lib-card-body">
+                        <ul className="lib-file-list">
+                          {m.files.map((f) => (
+                            <li key={f}>{f}</li>
+                          ))}
+                        </ul>
+                      </div>
+                    )}
+                  </div>
+                );
+              })}
+            </div>
+          ) : (
+            <div className="empty-state">
+              <strong>{filtering ? "No matches" : "No movies yet"}</strong>
+              <p className="muted" style={{ margin: 0 }}>
+                {filtering
+                  ? "Try a different search term."
+                  : "Downloaded movies will show up here after a scan."}
+              </p>
+            </div>
           )}
-        </ul>
+        </>
       )}
 
       {!loading && tab === "shows" && (
-        <ul className="space-y-2">
-          {filteredShows.map((s) => (
-            <li
-              key={s.folder}
-              className="rounded-xl border border-[var(--line)] bg-[var(--panel)] px-4 py-3"
-            >
-              <button
-                type="button"
-                className="flex w-full items-center justify-between gap-3 text-left"
-                onClick={() =>
-                  setExpanded(expanded === s.folder ? null : s.folder)
-                }
-              >
-                <span className="font-medium text-[var(--ink)]">{s.name}</span>
-                <span className="text-xs text-[var(--muted)]">
-                  {s.seasons.length} season{s.seasons.length === 1 ? "" : "s"} ·{" "}
-                  {s.episodeCount} ep
-                </span>
-              </button>
-              {expanded === s.folder && (
-                <div className="mt-2 max-h-64 space-y-1 overflow-y-auto border-t border-[var(--line)] pt-2 font-mono text-xs text-[var(--muted)]">
-                  {s.episodes.map((e) => (
-                    <div key={`${e.season}-${e.episode}-${e.fileName}`}>
-                      S{String(e.season).padStart(2, "0")}E
-                      {String(e.episode).padStart(2, "0")} · {e.fileName}
-                    </div>
-                  ))}
-                </div>
-              )}
-            </li>
-          ))}
-          {!filteredShows.length && (
-            <p className="text-[var(--muted)]">No TV shows found.</p>
+        <>
+          {filteredShows.length ? (
+            <div className="lib-grid">
+              {filteredShows.map((s) => {
+                const open = expanded === s.folder;
+                return (
+                  <div
+                    key={s.folder}
+                    className={`lib-card${open ? " is-open" : ""}`}
+                  >
+                    <button
+                      type="button"
+                      className="lib-card-head"
+                      aria-expanded={open}
+                      onClick={() => setExpanded(open ? null : s.folder)}
+                    >
+                      <span
+                        className="lib-tile"
+                        style={{ "--tile-hue": tileHue(s.name) } as CSSProperties}
+                      >
+                        {tileInitials(s.name)}
+                      </span>
+                      <span className="lib-card-meta">
+                        <span className="lib-card-title">{s.name}</span>
+                        <span className="lib-card-sub">
+                          {s.seasons.length} season
+                          {s.seasons.length === 1 ? "" : "s"} ·{" "}
+                          {s.episodeCount} episode
+                          {s.episodeCount === 1 ? "" : "s"}
+                        </span>
+                      </span>
+                      <Chevron open={open} />
+                    </button>
+                    {open && (
+                      <div className="lib-card-body">
+                        {groupBySeason(s.episodes).map((group) => (
+                          <div key={group.season} className="lib-season">
+                            <p className="lib-season-title">
+                              Season {group.season}
+                              <span>{group.eps.length}</span>
+                            </p>
+                            <ul className="lib-ep-list">
+                              {group.eps.map((e) => (
+                                <li key={`${e.season}-${e.episode}-${e.fileName}`}>
+                                  <span className="lib-ep-num">
+                                    E{String(e.episode).padStart(2, "0")}
+                                  </span>
+                                  <span className="lib-ep-file">
+                                    {e.fileName}
+                                  </span>
+                                </li>
+                              ))}
+                            </ul>
+                          </div>
+                        ))}
+                      </div>
+                    )}
+                  </div>
+                );
+              })}
+            </div>
+          ) : (
+            <div className="empty-state">
+              <strong>{filtering ? "No matches" : "No TV shows yet"}</strong>
+              <p className="muted" style={{ margin: 0 }}>
+                {filtering
+                  ? "Try a different search term."
+                  : "Downloaded series will show up here after a scan."}
+              </p>
+            </div>
           )}
-        </ul>
+        </>
       )}
     </div>
   );

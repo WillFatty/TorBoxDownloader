@@ -88,6 +88,8 @@ export interface DownloadJob {
   torboxFileId: number | null;
   bytesDownloaded: number;
   bytesTotal: number;
+  /** Instantaneous local download speed (bytes/sec); 0 when idle */
+  speedBytesPerSec: number;
   multiEpisode: boolean;
   savedFiles: string[];
   packSummary: string | null;

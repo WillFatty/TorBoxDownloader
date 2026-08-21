@@ -16,6 +16,8 @@ import {
   createTorrent,
   getTorrentById,
   isTorrentReady,
+  isTransientTorBoxError,
+  normalizeTorrentProgress,
   pickBestVideoFile,
   requestDownloadLink,
   type TorBoxFile,
@@ -78,6 +80,7 @@ class DownloadManager {
         if (job.packSummary === undefined) job.packSummary = null;
         if (job.episodeTitle === undefined) job.episodeTitle = null;
         if (job.imdbId === undefined) job.imdbId = null;
+        if (job.speedBytesPerSec == null) job.speedBytesPerSec = 0;
         this.jobs.set(job.id, job);
         if (
           job.status !== "completed" &&
@@ -183,6 +186,7 @@ class DownloadManager {
       torboxFileId: null,
       bytesDownloaded: 0,
       bytesTotal: 0,
+      speedBytesPerSec: 0,
       multiEpisode: false,
       savedFiles: [],
       packSummary: null,
@@ -403,6 +407,9 @@ class DownloadManager {
         progress: endPct,
         packSummary: `${summary} · saved ${saved.length}/${episodes.length}`,
       });
+
+      // Brief pause between pack files so requestdl isn't hammered
+      if (i < episodes.length - 1) await sleep(750);
     }
 
     this.patch(jobId, {
@@ -423,30 +430,50 @@ class DownloadManager {
     timeoutMs = 45 * 60 * 1000,
   ): Promise<TorBoxTorrent | null> {
     const start = Date.now();
+    // Always bypass TorBox's 10‑minute mylist cache while waiting — otherwise
+    // we sit at 15% long after TorBox has finished. Retries handle DB blips.
+    const pollMs = 2500;
+
     while (Date.now() - start < timeoutMs) {
       const current = this.jobs.get(jobId);
       if (!current || current.status === "cancelled") return null;
 
-      const torrent = await getTorrentById(apiKey, torrentId);
-      if (!torrent) {
-        await sleep(2000);
-        continue;
+      try {
+        const torrent = await getTorrentById(apiKey, torrentId, {
+          bypassCache: true,
+        });
+
+        if (!torrent) {
+          await sleep(pollMs);
+          continue;
+        }
+
+        const frac = normalizeTorrentProgress(torrent.progress);
+        const progress = Math.min(65, 15 + Math.round(frac * 50));
+        this.patch(jobId, {
+          progress,
+          bytesTotal: torrent.size || current.bytesTotal,
+          status: "torbox_downloading",
+        });
+
+        if (isTorrentReady(torrent) && torrent.files?.length) {
+          return torrent;
+        }
+
+        // Ready but file list not populated yet — short retry
+        if (isTorrentReady(torrent) && !torrent.files?.length) {
+          await sleep(1000);
+          continue;
+        }
+      } catch (err) {
+        if (isTransientTorBoxError(err)) {
+          await sleep(Math.min(8_000, pollMs * 2));
+          continue;
+        }
+        throw err;
       }
 
-      const progress = Math.min(
-        65,
-        15 + Math.round((torrent.progress || 0) * 50),
-      );
-      this.patch(jobId, {
-        progress,
-        bytesTotal: torrent.size || current.bytesTotal,
-        status: "torbox_downloading",
-      });
-
-      if (isTorrentReady(torrent) && torrent.files?.length) {
-        return torrent;
-      }
-      await sleep(2500);
+      await sleep(pollMs);
     }
     throw new Error("Timed out waiting for TorBox torrent");
   }
@@ -471,6 +498,10 @@ class DownloadManager {
     let downloaded = 0;
     const self = this;
     const span = Math.max(1, progressEnd - progressStart);
+    let lastTick = Date.now();
+    let lastBytes = 0;
+    let speed = 0;
+    let lastPatch = 0;
 
     const nodeStream = Readable.fromWeb(
       res.body as import("stream/web").ReadableStream,
@@ -478,24 +509,42 @@ class DownloadManager {
     const transform = new Transform({
       transform(chunk, _enc, cb) {
         downloaded += chunk.length;
-        const job = self.jobs.get(jobId);
-        if (job) {
-          const pct =
-            total > 0
-              ? progressStart + Math.round((downloaded / total) * span)
-              : progressStart;
-          self.patch(jobId, {
-            bytesDownloaded: downloaded,
-            bytesTotal: total || job.bytesTotal,
-            progress: Math.min(progressEnd, pct),
-          });
+        const now = Date.now();
+        const dt = now - lastTick;
+        if (dt >= 400) {
+          const instant = ((downloaded - lastBytes) / dt) * 1000;
+          speed = speed === 0 ? instant : speed * 0.35 + instant * 0.65;
+          lastTick = now;
+          lastBytes = downloaded;
+        }
+
+        const done = total > 0 && downloaded >= total;
+        if (now - lastPatch >= 250 || done) {
+          lastPatch = now;
+          const job = self.jobs.get(jobId);
+          if (job) {
+            const pct =
+              total > 0
+                ? progressStart + Math.round((downloaded / total) * span)
+                : progressStart;
+            self.patch(jobId, {
+              bytesDownloaded: downloaded,
+              bytesTotal: total || job.bytesTotal,
+              progress: Math.min(progressEnd, pct),
+              speedBytesPerSec: Math.round(speed),
+            });
+          }
         }
         cb(null, chunk);
       },
     });
 
-    await pipeline(nodeStream, transform, createWriteStream(tmp));
-    await fs.rename(tmp, destPath);
+    try {
+      await pipeline(nodeStream, transform, createWriteStream(tmp));
+      await fs.rename(tmp, destPath);
+    } finally {
+      this.patch(jobId, { speedBytesPerSec: 0 });
+    }
   }
 }
 

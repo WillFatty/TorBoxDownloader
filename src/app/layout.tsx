@@ -1,20 +1,21 @@
 import type { Metadata } from "next";
-import { Bricolage_Grotesque, IBM_Plex_Sans, IBM_Plex_Mono } from "next/font/google";
-import { Nav } from "@/components/Nav";
-import "./globals.css";
+import { Syne, Manrope, JetBrains_Mono } from "next/font/google";
+import { ClientNav } from "@/components/ClientNav";
+import "./app.css";
 
-const display = Bricolage_Grotesque({
+const display = Syne({
   variable: "--font-display",
   subsets: ["latin"],
+  weight: ["500", "600", "700", "800"],
 });
 
-const body = IBM_Plex_Sans({
+const body = Manrope({
   variable: "--font-body",
   subsets: ["latin"],
-  weight: ["400", "500", "600"],
+  weight: ["400", "500", "600", "700"],
 });
 
-const mono = IBM_Plex_Mono({
+const mono = JetBrains_Mono({
   variable: "--font-mono",
   subsets: ["latin"],
   weight: ["400", "500"],
@@ -33,11 +34,13 @@ export default function RootLayout({
   return (
     <html
       lang="en"
-      className={`${display.variable} ${body.variable} ${mono.variable} h-full antialiased`}
+      className={`${display.variable} ${body.variable} ${mono.variable}`}
     >
-      <body className="min-h-full flex flex-col">
-        <Nav />
-        <main className="flex-1">{children}</main>
+      <body>
+        <div className="app-frame">
+          <ClientNav />
+          <main className="app-main">{children}</main>
+        </div>
       </body>
     </html>
   );
