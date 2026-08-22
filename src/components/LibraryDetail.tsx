@@ -9,9 +9,231 @@ import {
   type ArtworkEntry,
   type LibSelection,
   type LibShow,
+  type MediaLanguages,
+  type NamingIssue,
 } from "./LibraryShared";
 
 const RESOLUTION = /\b(2160p|1080p|720p|480p|4k)\b/i;
+
+function isEnglishCode(code: string): boolean {
+  const base = code.toLowerCase().split("-")[0];
+  return base === "en" || base === "eng";
+}
+
+function needsEnglishOnly(langs: MediaLanguages | undefined): boolean {
+  if (!langs?.audio?.length) return false;
+  return langs.audio.some((a) => !isEnglishCode(a.code));
+}
+
+function LangTags({
+  langs,
+  resolution,
+  onEnglishOnly,
+  busy,
+}: {
+  langs: MediaLanguages | undefined;
+  resolution: string | null;
+  onEnglishOnly?: () => void;
+  busy?: boolean;
+}) {
+  const audio = langs?.audio || [];
+  const subs = langs?.subtitles || [];
+  const showEn = Boolean(onEnglishOnly && needsEnglishOnly(langs));
+  if (!resolution && !audio.length && !subs.length && !showEn) return null;
+
+  return (
+    <span className="lib-detail-tags">
+      {resolution && <span className="lib-detail-tag">{resolution}</span>}
+      {audio.map((lang) => (
+        <span
+          key={`a-${lang.code}`}
+          className="lib-detail-tag is-audio"
+          title={`Audio: ${lang.label}`}
+        >
+          {lang.code.toUpperCase()}
+        </span>
+      ))}
+      {subs.map((lang) => (
+        <span
+          key={`s-${lang.code}`}
+          className="lib-detail-tag is-sub"
+          title={`Subtitles: ${lang.label}`}
+        >
+          {lang.code.toUpperCase()} sub
+        </span>
+      ))}
+      {showEn && (
+        <button
+          type="button"
+          className="btn-secondary lib-en-btn"
+          disabled={busy}
+          title="Remux file to keep English audio and subtitles only"
+          onClick={(e) => {
+            e.stopPropagation();
+            onEnglishOnly?.();
+          }}
+        >
+          {busy ? "…" : "EN only"}
+        </button>
+      )}
+    </span>
+  );
+}
+
+function NamingIssuesPanel({
+  issues,
+  type,
+  folder,
+  canonicalName,
+  canonicalYear,
+  episodeTitles,
+  onFixed,
+}: {
+  issues: NamingIssue[];
+  type: "movie" | "series";
+  folder: string;
+  canonicalName: string;
+  canonicalYear: string | null;
+  episodeTitles: Record<string, string>;
+  onFixed: (result: { newFolder: string; changes: Array<{ from: string; to: string }> }) => void;
+}) {
+  const [busyKey, setBusyKey] = useState<string | null>(null);
+  const [error, setError] = useState<string | null>(null);
+
+  const fixableIssues = issues.filter(
+    (issue) => issue.code !== "unmatched" && Boolean(issue.expected),
+  );
+
+  if (!issues.length) return null;
+
+  async function runFix(body: Record<string, unknown>) {
+    const res = await fetch("/api/library/fix", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(body),
+    });
+    const data = (await res.json()) as {
+      error?: string;
+      newFolder?: string;
+      changes?: Array<{ from: string; to: string }>;
+    };
+    if (!res.ok) throw new Error(data.error || "Fix failed");
+    return {
+      newFolder: data.newFolder || folder,
+      changes: data.changes || [],
+    };
+  }
+
+  async function fixIssue(issue: NamingIssue) {
+    if (issue.code === "unmatched" || !issue.expected) return;
+
+    const key = `${issue.code}-${issue.file || ""}`;
+    setBusyKey(key);
+    setError(null);
+    try {
+      const result = await runFix({
+        type,
+        folder,
+        issueCode: issue.code,
+        file: issue.file,
+        canonicalName,
+        canonicalYear,
+        episodeTitles,
+      });
+      onFixed(result);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Fix failed");
+    } finally {
+      setBusyKey(null);
+    }
+  }
+
+  async function fixAll() {
+    if (!fixableIssues.length) return;
+
+    setBusyKey("all");
+    setError(null);
+    try {
+      const result = await runFix({
+        type,
+        folder,
+        fixAll: true,
+        canonicalName,
+        canonicalYear,
+        episodeTitles,
+        issues: fixableIssues.map((issue) => ({
+          issueCode: issue.code,
+          file: issue.file,
+        })),
+      });
+      onFixed(result);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Fix failed");
+    } finally {
+      setBusyKey(null);
+    }
+  }
+
+  return (
+    <div className="lib-naming-issues">
+      <div className="lib-naming-head">
+        <h3 className="lib-naming-title">Naming issues</h3>
+        {fixableIssues.length > 0 && (
+          <button
+            type="button"
+            className="btn-secondary lib-naming-fix-all"
+            disabled={Boolean(busyKey)}
+            onClick={() => void fixAll()}
+          >
+            {busyKey === "all" ? "Fixing all…" : "Fix all"}
+          </button>
+        )}
+      </div>
+      {error && <p className="lib-naming-error">{error}</p>}
+      <ul className="lib-naming-list">
+        {issues.map((issue, index) => {
+          const fixable = issue.code !== "unmatched" && Boolean(issue.expected);
+          const key = `${issue.code}-${issue.file || index}`;
+          const busy = busyKey === `${issue.code}-${issue.file || ""}`;
+          return (
+            <li
+              key={key}
+              className={`lib-naming-issue is-${issue.severity}`}
+            >
+              <div className="lib-naming-issue-head">
+                <span className="lib-naming-scope">
+                  {issue.scope === "folder" ? "Folder" : "File"}
+                </span>
+                {fixable && (
+                  <button
+                    type="button"
+                    className="btn-secondary lib-naming-fix"
+                    disabled={Boolean(busyKey)}
+                    onClick={() => void fixIssue(issue)}
+                  >
+                    {busy ? "Fixing…" : "Fix"}
+                  </button>
+                )}
+              </div>
+              <p className="lib-naming-message">{issue.message}</p>
+              {issue.expected && (
+                <p className="lib-naming-diff">
+                  Expected <code>{issue.expected}</code>
+                  {issue.actual ? (
+                    <>
+                      {" "}
+                      · got <code>{issue.actual}</code>
+                    </>
+                  ) : null}
+                </p>
+              )}
+            </li>
+          );
+        })}
+      </ul>
+    </div>
+  );
+}
 
 function resolutionOf(fileName: string): string | null {
   const hit = fileName.match(RESOLUTION);
@@ -37,19 +259,151 @@ export function LibraryDetail({
   selection,
   art,
   onClose,
+  onFixed,
 }: {
   selection: LibSelection;
   art: ArtworkEntry | undefined;
   onClose: () => void;
+  onFixed: (oldFolder: string, result: { newFolder: string }) => void;
 }) {
   const [meta, setMeta] = useState<MediaMeta | null>(null);
   const [season, setSeason] = useState<number | null>(null);
+  const [langs, setLangs] = useState<Record<string, MediaLanguages>>({});
+  const [enBusy, setEnBusy] = useState<string | null>(null);
+  const [enStatus, setEnStatus] = useState<string | null>(null);
+  const [enError, setEnError] = useState<string | null>(null);
 
   const isShow = selection.kind === "show";
   const name = isShow ? selection.show.name : selection.movie.name;
   const folder = isShow ? selection.show.folder : selection.movie.folder;
   const imdbId = art?.imdbId ?? null;
   const poster = art?.poster ?? null;
+
+  const probeFiles = useMemo(() => {
+    if (selection.kind === "movie") {
+      return selection.movie.files.map((file) =>
+        folder.endsWith("/") || folder.endsWith("\\")
+          ? `${folder}${file}`
+          : `${folder}/${file}`.replace(/\/+/g, "/"),
+      );
+    }
+    return selection.show.episodes
+      .map((ep) => ep.path)
+      .filter((p): p is string => Boolean(p));
+  }, [selection, folder]);
+
+  useEffect(() => {
+    if (!probeFiles.length) {
+      setLangs({});
+      return;
+    }
+    let cancelled = false;
+    void (async () => {
+      const BATCH = 40;
+      const merged: Record<string, MediaLanguages> = {};
+      for (let i = 0; i < probeFiles.length; i += BATCH) {
+        if (cancelled) return;
+        try {
+          const res = await fetch("/api/library/probe", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({
+              files: probeFiles.slice(i, i + BATCH),
+            }),
+          });
+          if (!res.ok) continue;
+          const data = (await res.json()) as {
+            languages?: Record<string, MediaLanguages>;
+          };
+          Object.assign(merged, data.languages || {});
+          if (!cancelled) setLangs({ ...merged });
+        } catch {
+          // Language tags are optional.
+        }
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, [probeFiles]);
+
+  function langsFor(filePath: string | undefined): MediaLanguages | undefined {
+    if (!filePath) return undefined;
+    if (langs[filePath]) return langs[filePath];
+    const normalized = filePath.replace(/\\/g, "/");
+    if (langs[normalized]) return langs[normalized];
+    // Match on basename if absolute keys differ slightly across resolve().
+    const base = normalized.split("/").pop();
+    if (!base) return undefined;
+    for (const [key, value] of Object.entries(langs)) {
+      if (key.replace(/\\/g, "/").endsWith(`/${base}`)) return value;
+    }
+    return undefined;
+  }
+
+  async function refreshLangs(files: string[]) {
+    if (!files.length) return;
+    try {
+      const res = await fetch("/api/library/probe", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ files }),
+      });
+      if (!res.ok) return;
+      const data = (await res.json()) as {
+        languages?: Record<string, MediaLanguages>;
+      };
+      setLangs((prev) => ({ ...prev, ...(data.languages || {}) }));
+    } catch {
+      // optional
+    }
+  }
+
+  async function makeEnglishOnly(files: string[]) {
+    const targets = files.filter((f) => needsEnglishOnly(langsFor(f)));
+    if (!targets.length) {
+      setEnStatus("Already English-only");
+      return;
+    }
+
+    if (targets.length > 1) {
+      const ok = window.confirm(
+        `Remux ${targets.length} files to English audio & subtitles only?\n\nVideo is stream-copied (not re-encoded). Non-English tracks are removed in place.`,
+      );
+      if (!ok) return;
+    }
+
+    setEnError(null);
+    setEnStatus(null);
+
+    for (let i = 0; i < targets.length; i += 1) {
+      const file = targets[i];
+      setEnBusy(file);
+      setEnStatus(`English only ${i + 1}/${targets.length}…`);
+      try {
+        const res = await fetch("/api/library/english-only", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ file }),
+        });
+        const data = (await res.json()) as { error?: string };
+        if (!res.ok) throw new Error(data.error || "Remux failed");
+        await refreshLangs([file]);
+      } catch (err) {
+        setEnError(err instanceof Error ? err.message : "Remux failed");
+        setEnBusy(null);
+        setEnStatus(null);
+        return;
+      }
+    }
+
+    setEnBusy(null);
+    setEnStatus(
+      targets.length === 1
+        ? "English-only remux complete"
+        : `English-only remux complete (${targets.length} files)`,
+    );
+  }
 
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
@@ -188,26 +542,87 @@ export function LibraryDetail({
             <p className="lib-overview">{meta.description}</p>
           )}
 
+          {art?.namingIssues?.length ? (
+            <NamingIssuesPanel
+              issues={art.namingIssues}
+              type={isShow ? "series" : "movie"}
+              folder={folder}
+              canonicalName={art.canonicalName || name}
+              canonicalYear={
+                isShow ? null : art.canonicalYear || selection.movie.year
+              }
+              episodeTitles={Object.fromEntries(episodeTitles)}
+              onFixed={(result) =>
+                onFixed(folder, { newFolder: result.newFolder })
+              }
+            />
+          ) : null}
+
+          {art?.canonicalName &&
+            !isShow &&
+            (art.canonicalName !== name ||
+              (art.canonicalYear && art.canonicalYear !== year)) && (
+              <p className="lib-canonical-hint">
+                Identified as{" "}
+                <strong>
+                  {art.canonicalName}
+                  {art.canonicalYear ? ` (${art.canonicalYear})` : ""}
+                </strong>
+              </p>
+            )}
+
+          {art?.canonicalName && isShow && art.canonicalName !== name && (
+            <p className="lib-canonical-hint">
+              Identified as <strong>{art.canonicalName}</strong>
+            </p>
+          )}
+
           {isShow && activeGroup ? (
             <>
-              {seasonGroups.length > 1 && (
-                <div className="lib-season-tabs">
-                  {seasonGroups.map((group) => (
-                    <button
-                      key={group.season}
-                      type="button"
-                      className={`chip${group.season === activeGroup.season ? " chip-active" : ""}`}
-                      onClick={() => setSeason(group.season)}
-                    >
-                      {group.season === 0
-                        ? "Specials"
-                        : `Season ${group.season}`}
-                      <span className="lib-season-count">
-                        {group.eps.length}
-                      </span>
-                    </button>
-                  ))}
-                </div>
+              <div className="lib-season-bar">
+                {seasonGroups.length > 1 && (
+                  <div className="lib-season-tabs">
+                    {seasonGroups.map((group) => (
+                      <button
+                        key={group.season}
+                        type="button"
+                        className={`chip${group.season === activeGroup.season ? " chip-active" : ""}`}
+                        onClick={() => setSeason(group.season)}
+                      >
+                        {group.season === 0
+                          ? "Specials"
+                          : `Season ${group.season}`}
+                        <span className="lib-season-count">
+                          {group.eps.length}
+                        </span>
+                      </button>
+                    ))}
+                  </div>
+                )}
+                {activeGroup.eps.some((ep) =>
+                  needsEnglishOnly(langsFor(ep.path)),
+                ) && (
+                  <button
+                    type="button"
+                    className="btn-secondary lib-en-btn-season"
+                    disabled={Boolean(enBusy)}
+                    onClick={() =>
+                      void makeEnglishOnly(
+                        activeGroup.eps
+                          .map((ep) => ep.path)
+                          .filter((p): p is string => Boolean(p)),
+                      )
+                    }
+                  >
+                    {enBusy ? "Remuxing…" : "English only (season)"}
+                  </button>
+                )}
+              </div>
+
+              {(enStatus || enError) && (
+                <p className={enError ? "lib-naming-error" : "lib-en-status"}>
+                  {enError || enStatus}
+                </p>
               )}
 
               <ul className="lib-detail-list">
@@ -230,7 +645,16 @@ export function LibraryDetail({
                           <span className="lib-detail-file">{ep.fileName}</span>
                         )}
                       </span>
-                      {res && <span className="lib-detail-tag">{res}</span>}
+                      <LangTags
+                        langs={langsFor(ep.path)}
+                        resolution={res}
+                        busy={Boolean(enBusy)}
+                        onEnglishOnly={
+                          ep.path
+                            ? () => void makeEnglishOnly([ep.path!])
+                            : undefined
+                        }
+                      />
                     </li>
                   );
                 })}
@@ -239,24 +663,66 @@ export function LibraryDetail({
           ) : null}
 
           {!isShow && (
-            <ul className="lib-detail-list">
-              {selection.movie.files.map((file) => {
-                const res = resolutionOf(file);
-                return (
-                  <li key={file} className="lib-detail-row">
-                    <span className="lib-detail-text">
-                      <span className="lib-detail-title">{file}</span>
-                    </span>
-                    {res && <span className="lib-detail-tag">{res}</span>}
-                  </li>
+            <>
+              {selection.movie.files.some((file) => {
+                const filePath = probeFiles.find(
+                  (p) =>
+                    p.endsWith(`/${file}`) ||
+                    p.endsWith(`\\${file}`) ||
+                    p.endsWith(file),
                 );
-              })}
-              {!selection.movie.files.length && (
-                <li className="lib-detail-row muted">
-                  No video files in this folder.
-                </li>
+                return needsEnglishOnly(langsFor(filePath));
+              }) && (
+                <div className="lib-season-bar">
+                  <button
+                    type="button"
+                    className="btn-secondary lib-en-btn-season"
+                    disabled={Boolean(enBusy)}
+                    onClick={() => void makeEnglishOnly(probeFiles)}
+                  >
+                    {enBusy ? "Remuxing…" : "English only"}
+                  </button>
+                </div>
               )}
-            </ul>
+              {(enStatus || enError) && (
+                <p className={enError ? "lib-naming-error" : "lib-en-status"}>
+                  {enError || enStatus}
+                </p>
+              )}
+              <ul className="lib-detail-list">
+                {selection.movie.files.map((file) => {
+                  const res = resolutionOf(file);
+                  const filePath = probeFiles.find(
+                    (p) =>
+                      p.endsWith(`/${file}`) ||
+                      p.endsWith(`\\${file}`) ||
+                      p.endsWith(file),
+                  );
+                  return (
+                    <li key={file} className="lib-detail-row">
+                      <span className="lib-detail-text">
+                        <span className="lib-detail-title">{file}</span>
+                      </span>
+                      <LangTags
+                        langs={langsFor(filePath)}
+                        resolution={res}
+                        busy={Boolean(enBusy)}
+                        onEnglishOnly={
+                          filePath
+                            ? () => void makeEnglishOnly([filePath])
+                            : undefined
+                        }
+                      />
+                    </li>
+                  );
+                })}
+                {!selection.movie.files.length && (
+                  <li className="lib-detail-row muted">
+                    No video files in this folder.
+                  </li>
+                )}
+              </ul>
+            </>
           )}
         </div>
 

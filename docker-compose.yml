@@ -1,0 +1,19 @@
+services:
+  torbox-downloader:
+    build: .
+    image: torbox-downloader:latest
+    restart: unless-stopped
+    ports:
+      - "${PORT:-3000}:3000"
+    env_file:
+      - .env
+    environment:
+      SETTINGS_PATH: /app/data/settings.json
+      JOBS_PATH: /app/data/jobs.json
+    volumes:
+      # App state (settings, download jobs, artwork cache)
+      - ./data:/app/data
+      # Host library folder → /raid inside the container (matches MOVIES_PATH / TV_SHOWS_PATH)
+      # Example: host /raid2 mounted as container /raid → set LIBRARY_ROOT=/raid2 in .env
+      - ${LIBRARY_ROOT:-/raid}:/raid
+    user: "1000:1000"

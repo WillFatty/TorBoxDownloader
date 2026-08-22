@@ -72,6 +72,7 @@ export async function GET(request: Request) {
             season: e.season,
             episode: e.episode,
             fileName: e.fileName,
+            path: e.path,
           })),
         })),
       },

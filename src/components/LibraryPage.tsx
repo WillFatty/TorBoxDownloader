@@ -15,9 +15,21 @@ interface ArtworkItem {
   type: "movie" | "series";
   name: string;
   year: string | null;
+  folderName: string;
+  files?: string[];
+  episodes?: LibShow["episodes"];
 }
 
 const ARTWORK_BATCH = 40;
+
+function folderLabel(folder: string) {
+  const parts = folder.split(/[/\\]/);
+  return parts[parts.length - 1] || folder;
+}
+
+function hasNamingIssues(entry: ArtworkEntry | undefined): boolean {
+  return Boolean(entry?.namingIssues?.length);
+}
 
 function OpenArrow() {
   return (
@@ -46,6 +58,7 @@ export function LibraryPage() {
   const [selection, setSelection] = useState<LibSelection | null>(null);
   const [art, setArt] = useState<Record<string, ArtworkEntry>>({});
   const [brokenArt, setBrokenArt] = useState<Record<string, true>>({});
+  const [issuesOnly, setIssuesOnly] = useState(false);
 
   function posterFor(key: string): string | null {
     return brokenArt[key] ? null : art[key]?.poster ?? null;
@@ -55,9 +68,7 @@ export function LibraryPage() {
     setBrokenArt((prev) => ({ ...prev, [key]: true }));
   }
 
-  async function load() {
-    setLoading(true);
-    setError(null);
+  async function reloadLibrary() {
     try {
       const res = await fetch("/api/library");
       const data = await res.json();
@@ -66,10 +77,45 @@ export function LibraryPage() {
       setShows(data.library.shows || []);
       setRoot(data.library.root || "");
       setScannedAt(data.library.scannedAt || "");
+      return data.library as {
+        movies: LibMovie[];
+        shows: LibShow[];
+      };
     } catch (err) {
       setError(err instanceof Error ? err.message : "Scan failed");
-    } finally {
-      setLoading(false);
+      return null;
+    }
+  }
+
+  async function load() {
+    setLoading(true);
+    setError(null);
+    await reloadLibrary();
+    setLoading(false);
+  }
+
+  async function handleNamingFixed(
+    oldFolder: string,
+    result: { newFolder: string },
+  ) {
+    setArt((prev) => {
+      const next = { ...prev };
+      delete next[oldFolder];
+      return next;
+    });
+
+    const library = await reloadLibrary();
+    if (!library || !selection) return;
+
+    const targetFolder = result.newFolder;
+    if (selection.kind === "movie") {
+      const movie = library.movies.find((m) => m.folder === targetFolder);
+      if (movie) setSelection({ kind: "movie", movie });
+      else setSelection(null);
+    } else {
+      const show = library.shows.find((s) => s.folder === targetFolder);
+      if (show) setSelection({ kind: "show", show });
+      else setSelection(null);
     }
   }
 
@@ -88,12 +134,16 @@ export function LibraryPage() {
         type: "movie" as const,
         name: m.name,
         year: m.year,
+        folderName: folderLabel(m.folder),
+        files: m.files,
       })),
       ...shows.map((s) => ({
         key: s.folder,
         type: "series" as const,
         name: s.name,
         year: null,
+        folderName: folderLabel(s.folder),
+        episodes: s.episodes,
       })),
     ];
 
@@ -128,20 +178,28 @@ export function LibraryPage() {
   }, [movies, shows]);
 
   const filteredMovies = useMemo(() => {
+    let list = movies;
+    if (issuesOnly) {
+      list = list.filter((m) => hasNamingIssues(art[m.folder]));
+    }
     const needle = q.trim().toLowerCase();
-    if (!needle) return movies;
-    return movies.filter(
+    if (!needle) return list;
+    return list.filter(
       (m) =>
         m.name.toLowerCase().includes(needle) ||
         (m.year || "").includes(needle),
     );
-  }, [movies, q]);
+  }, [movies, q, issuesOnly, art]);
 
   const filteredShows = useMemo(() => {
+    let list = shows;
+    if (issuesOnly) {
+      list = list.filter((s) => hasNamingIssues(art[s.folder]));
+    }
     const needle = q.trim().toLowerCase();
-    if (!needle) return shows;
-    return shows.filter((s) => s.name.toLowerCase().includes(needle));
-  }, [shows, q]);
+    if (!needle) return list;
+    return list.filter((s) => s.name.toLowerCase().includes(needle));
+  }, [shows, q, issuesOnly, art]);
 
   const episodeTotal = useMemo(
     () => shows.reduce((sum, s) => sum + s.episodeCount, 0),
@@ -151,10 +209,21 @@ export function LibraryPage() {
     () => movies.reduce((sum, m) => sum + m.fileCount, 0),
     [movies],
   );
+  const namingIssueCount = useMemo(() => {
+    const keys = new Set([
+      ...movies.map((m) => m.folder),
+      ...shows.map((s) => s.folder),
+    ]);
+    let count = 0;
+    for (const key of keys) {
+      if (hasNamingIssues(art[key])) count += 1;
+    }
+    return count;
+  }, [movies, shows, art]);
 
   const total = tab === "movies" ? movies.length : shows.length;
   const shown = tab === "movies" ? filteredMovies.length : filteredShows.length;
-  const filtering = q.trim().length > 0;
+  const filtering = q.trim().length > 0 || issuesOnly;
 
   return (
     <div className="page-shell page-shell-wide page-enter">
@@ -201,6 +270,10 @@ export function LibraryPage() {
         <div className="lib-stat">
           <span className="lib-stat-value">{movieFileTotal}</span>
           <span className="lib-stat-label">Movie files</span>
+        </div>
+        <div className="lib-stat lib-stat-warn">
+          <span className="lib-stat-value">{namingIssueCount}</span>
+          <span className="lib-stat-label">Naming issues</span>
         </div>
       </div>
 
@@ -250,6 +323,15 @@ export function LibraryPage() {
             {shown} of {total}
           </p>
         )}
+
+        <button
+          type="button"
+          className={`chip${issuesOnly ? " chip-active" : ""}`}
+          onClick={() => setIssuesOnly((v) => !v)}
+        >
+          Naming issues
+          <span className="segmented-count">{namingIssueCount}</span>
+        </button>
       </div>
 
       {error && <p className="text-danger lib-message">{error}</p>}
@@ -266,11 +348,13 @@ export function LibraryPage() {
         <>
           {filteredMovies.length ? (
             <div className="lib-grid">
-              {filteredMovies.map((m) => (
+              {filteredMovies.map((m) => {
+                const issues = art[m.folder]?.namingIssues || [];
+                return (
                 <button
                   key={m.folder}
                   type="button"
-                  className="lib-card"
+                  className={`lib-card${issues.length ? " has-naming-issue" : ""}`}
                   onClick={() => setSelection({ kind: "movie", movie: m })}
                 >
                   <ArtThumb
@@ -285,17 +369,28 @@ export function LibraryPage() {
                       {m.fileCount === 1 ? "" : "s"}
                     </span>
                   </span>
+                  {issues.length > 0 && (
+                    <span
+                      className="lib-issue-badge"
+                      title={`${issues.length} naming issue${issues.length === 1 ? "" : "s"}`}
+                    >
+                      {issues.length}
+                    </span>
+                  )}
                   <OpenArrow />
                 </button>
-              ))}
+              );
+              })}
             </div>
           ) : (
             <div className="empty-state">
               <strong>{filtering ? "No matches" : "No movies yet"}</strong>
               <p className="muted" style={{ margin: 0 }}>
-                {filtering
-                  ? "Try a different search term."
-                  : "Downloaded movies will show up here after a scan."}
+                {issuesOnly
+                  ? "No naming issues found in this tab."
+                  : filtering
+                    ? "Try a different search term."
+                    : "Downloaded movies will show up here after a scan."}
               </p>
             </div>
           )}
@@ -306,11 +401,13 @@ export function LibraryPage() {
         <>
           {filteredShows.length ? (
             <div className="lib-grid">
-              {filteredShows.map((s) => (
+              {filteredShows.map((s) => {
+                const issues = art[s.folder]?.namingIssues || [];
+                return (
                 <button
                   key={s.folder}
                   type="button"
-                  className="lib-card"
+                  className={`lib-card${issues.length ? " has-naming-issue" : ""}`}
                   onClick={() => setSelection({ kind: "show", show: s })}
                 >
                   <ArtThumb
@@ -326,17 +423,28 @@ export function LibraryPage() {
                       episode{s.episodeCount === 1 ? "" : "s"}
                     </span>
                   </span>
+                  {issues.length > 0 && (
+                    <span
+                      className="lib-issue-badge"
+                      title={`${issues.length} naming issue${issues.length === 1 ? "" : "s"}`}
+                    >
+                      {issues.length}
+                    </span>
+                  )}
                   <OpenArrow />
                 </button>
-              ))}
+              );
+              })}
             </div>
           ) : (
             <div className="empty-state">
               <strong>{filtering ? "No matches" : "No TV shows yet"}</strong>
               <p className="muted" style={{ margin: 0 }}>
-                {filtering
-                  ? "Try a different search term."
-                  : "Downloaded series will show up here after a scan."}
+                {issuesOnly
+                  ? "No naming issues found in this tab."
+                  : filtering
+                    ? "Try a different search term."
+                    : "Downloaded series will show up here after a scan."}
               </p>
             </div>
           )}
@@ -354,6 +462,9 @@ export function LibraryPage() {
             ]
           }
           onClose={() => setSelection(null)}
+          onFixed={(oldFolder, result) =>
+            void handleNamingFixed(oldFolder, result)
+          }
         />
       )}
     </div>

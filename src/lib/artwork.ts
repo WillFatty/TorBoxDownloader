@@ -10,7 +10,7 @@ const CACHE_FILE = process.env.ARTWORK_CACHE_PATH
   : path.join(DATA_DIR, "artwork-cache.json");
 
 /** Bump when the matching rules change so stale misses are re-resolved. */
-const MATCH_VERSION = "v2";
+const MATCH_VERSION = "v3";
 const HIT_TTL_MS = 30 * 24 * 60 * 60 * 1000;
 const MISS_TTL_MS = 24 * 60 * 60 * 1000;
 const LOOKUP_CONCURRENCY = 4;
@@ -20,11 +20,16 @@ export interface ArtworkRequest {
   type: MediaType;
   name: string;
   year?: string | null;
+  folderName?: string;
+  files?: string[];
+  episodes?: Array<{ season: number; episode: number; fileName: string }>;
 }
 
 export interface ArtworkResult {
   poster: string | null;
   imdbId: string | null;
+  canonicalName: string | null;
+  canonicalYear: string | null;
 }
 
 interface CacheEntry extends ArtworkResult {
@@ -154,13 +159,31 @@ async function lookup(
     const match = pickMatch(results, item.name, item.year);
     return {
       result: match
-        ? { poster: match.poster, imdbId: match.imdbId }
-        : { poster: null, imdbId: null },
+        ? {
+            poster: match.poster,
+            imdbId: match.imdbId,
+            canonicalName: match.name,
+            canonicalYear: match.year || null,
+          }
+        : {
+            poster: null,
+            imdbId: null,
+            canonicalName: null,
+            canonicalYear: null,
+          },
       cacheable: true,
     };
   } catch {
     // Don't burn a 24h negative cache entry on a transient network failure.
-    return { result: { poster: null, imdbId: null }, cacheable: false };
+    return {
+      result: {
+        poster: null,
+        imdbId: null,
+        canonicalName: null,
+        canonicalYear: null,
+      },
+      cacheable: false,
+    };
   }
 }
 
@@ -174,7 +197,12 @@ export async function resolveArtwork(
   for (const item of items) {
     const entry = store[cacheKey(item.type, item.name, item.year)];
     if (entry && isFresh(entry)) {
-      out[item.key] = { poster: entry.poster, imdbId: entry.imdbId };
+      out[item.key] = {
+        poster: entry.poster,
+        imdbId: entry.imdbId,
+        canonicalName: entry.canonicalName ?? null,
+        canonicalYear: entry.canonicalYear ?? null,
+      };
     } else {
       pending.push(item);
     }

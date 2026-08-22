@@ -15,12 +15,35 @@ export interface LibShow {
   seasons: number[];
   episodeCount: number;
   folder: string;
-  episodes: Array<{ season: number; episode: number; fileName: string }>;
+  episodes: Array<{
+    season: number;
+    episode: number;
+    fileName: string;
+    path?: string;
+  }>;
+}
+
+export interface MediaLanguages {
+  audio: Array<{ code: string; label: string }>;
+  subtitles: Array<{ code: string; label: string }>;
+}
+
+export interface NamingIssue {
+  scope: "folder" | "file";
+  severity: "error" | "warn";
+  code: string;
+  message: string;
+  expected?: string;
+  actual?: string;
+  file?: string;
 }
 
 export interface ArtworkEntry {
   poster: string | null;
   imdbId: string | null;
+  canonicalName?: string | null;
+  canonicalYear?: string | null;
+  namingIssues?: NamingIssue[];
 }
 
 export type LibSelection =
