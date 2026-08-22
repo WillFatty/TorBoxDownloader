@@ -261,6 +261,39 @@ export function isEnglishLangCode(code: string | null | undefined): boolean {
   return base === "en" || base === "eng";
 }
 
+export async function probeDurationSeconds(
+  filePath: string,
+): Promise<number | null> {
+  const bin = await resolveFfprobePath();
+  if (!bin) return null;
+
+  try {
+    const { stdout } = await execFileAsync(
+      bin,
+      [
+        "-v",
+        "quiet",
+        "-print_format",
+        "json",
+        "-show_entries",
+        "format=duration",
+        filePath,
+      ],
+      { timeout: FFPROBE_TIMEOUT_MS, maxBuffer: 1024 * 1024 },
+    );
+    const parsed = JSON.parse(stdout || "{}") as {
+      format?: { duration?: string | number };
+    };
+    const raw = parsed.format?.duration;
+    const seconds = typeof raw === "string" ? parseFloat(raw) : raw ?? null;
+    return seconds && Number.isFinite(seconds) && seconds > 0
+      ? seconds
+      : null;
+  } catch {
+    return null;
+  }
+}
+
 export async function probeManyMediaLanguages(
   filePaths: string[],
 ): Promise<Record<string, MediaLanguages>> {

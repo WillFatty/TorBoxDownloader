@@ -2,7 +2,7 @@ import path from "path";
 import { NextResponse } from "next/server";
 import {
   isFfmpegAvailable,
-  remuxEnglishOnly,
+  remuxEnglishSubsOnly,
 } from "@/lib/media-english";
 import { scheduleRemux, startQueuedRemux } from "@/lib/remux-queue";
 import {
@@ -17,14 +17,14 @@ function remuxTracked(file: string): Promise<void> {
   return (async () => {
     startQueuedRemux(file);
     try {
-      const result = await remuxEnglishOnly(file, (percent) =>
+      const result = await remuxEnglishSubsOnly(file, (percent) =>
         updateRemuxPercent(file, percent),
       );
       finishRemux(file, { ok: true, skipped: result.skipped });
     } catch (err) {
       finishRemux(file, {
         ok: false,
-        error: err instanceof Error ? err.message : "English-only remux failed",
+        error: err instanceof Error ? err.message : "Subtitle cleanup failed",
       });
     }
   })();
@@ -66,7 +66,7 @@ export async function POST(request: Request) {
     }
     return NextResponse.json({ queued });
   } catch (err) {
-    const message = err instanceof Error ? err.message : "English-only remux failed";
+    const message = err instanceof Error ? err.message : "Subtitle cleanup failed";
     return NextResponse.json({ error: message }, { status: 400 });
   }
 }

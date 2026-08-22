@@ -1722,6 +1722,172 @@ body {
   animation: soft-pulse 1.6s ease-in-out infinite;
 }
 
+/* —— Remux progress —— */
+.remux-backdrop {
+  z-index: 70;
+  background: rgba(3, 6, 5, 0.8);
+}
+
+.remux-modal {
+  display: flex;
+  flex-direction: column;
+  width: 100%;
+  max-width: 28rem;
+  max-height: min(80dvh, 34rem);
+  border: 1px solid var(--line-strong);
+  border-radius: var(--radius-lg);
+  background: var(--bg-elevated);
+  box-shadow: 0 40px 90px -30px rgba(0, 0, 0, 0.85);
+  padding: 1.25rem 1.35rem;
+  animation: fade-up 0.24s ease-out both;
+}
+
+.remux-title {
+  margin: 0;
+  font-size: 0.72rem;
+  font-weight: 700;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--accent);
+}
+
+.remux-sub {
+  margin: 0.3rem 0 0.9rem;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-size: 0.95rem;
+  font-weight: 600;
+  color: var(--ink);
+}
+
+.remux-progress {
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
+}
+
+.remux-progress .progress-track {
+  flex: 1;
+}
+
+.remux-count {
+  flex-shrink: 0;
+  font-size: 0.78rem;
+  color: var(--ink-soft);
+  font-variant-numeric: tabular-nums;
+}
+
+.remux-files {
+  display: flex;
+  flex-direction: column;
+  margin: 0.9rem 0 0;
+  border-top: 1px solid var(--line);
+  padding: 0;
+  list-style: none;
+  overflow-y: auto;
+}
+
+.remux-file {
+  display: flex;
+  align-items: center;
+  gap: 0.55rem;
+  border-bottom: 1px solid var(--line);
+  padding: 0.45rem 0.1rem;
+  font-size: 0.8rem;
+}
+
+.remux-file.is-pending {
+  color: var(--muted);
+}
+
+.remux-file.is-working {
+  color: var(--ink);
+}
+
+.remux-file-icon {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+  width: 1rem;
+  height: 1rem;
+  font-size: 0.78rem;
+  line-height: 1;
+  color: var(--muted);
+}
+
+.remux-file.is-done .remux-file-icon,
+.remux-file.is-done .remux-file-state {
+  color: var(--accent);
+}
+
+.remux-file.is-failed .remux-file-icon,
+.remux-file.is-failed .remux-file-state {
+  color: var(--danger);
+}
+
+.remux-file-name {
+  flex: 1;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.remux-file-state {
+  flex-shrink: 0;
+  font-size: 0.65rem;
+  font-weight: 700;
+  letter-spacing: 0.05em;
+  text-transform: uppercase;
+  color: var(--muted);
+}
+
+.remux-phase {
+  margin: 0.55rem 0 0;
+  font-size: 0.72rem;
+  letter-spacing: 0.03em;
+  color: var(--muted);
+}
+
+.remux-file-bar {
+  position: relative;
+  flex: 0 0 28%;
+  height: 0.25rem;
+  overflow: hidden;
+  border-radius: 999px;
+  background: var(--line);
+}
+
+.remux-file-fill {
+  display: block;
+  height: 100%;
+  border-radius: inherit;
+  background: linear-gradient(90deg, var(--accent-dim), var(--accent));
+  transition: width 0.3s ease;
+}
+
+@keyframes remux-rotate {
+  to {
+    transform: rotate(360deg);
+  }
+}
+
+.remux-spin {
+  width: 0.7rem;
+  height: 0.7rem;
+  border: 2px solid var(--line-strong);
+  border-top-color: var(--accent);
+  border-radius: 999px;
+  animation: remux-rotate 0.7s linear infinite;
+}
+
+.remux-close {
+  align-self: center;
+  margin-top: 1rem;
+  padding: 0.4rem 1.4rem;
+}
+
 a {
   color: inherit;
   text-decoration: none;

@@ -2,6 +2,26 @@
 
 import type { CSSProperties } from "react";
 
+export async function readJson<T>(res: Response): Promise<T> {
+  const text = await res.text();
+  if (!text.trim()) {
+    throw new Error(
+      res.ok
+        ? "Server returned an empty response"
+        : `Request failed (${res.status})`,
+    );
+  }
+  try {
+    return JSON.parse(text) as T;
+  } catch {
+    throw new Error(
+      res.ok
+        ? `Server returned an invalid response (${res.status})`
+        : `Request failed (${res.status})`,
+    );
+  }
+}
+
 export interface LibMovie {
   name: string;
   year: string | null;

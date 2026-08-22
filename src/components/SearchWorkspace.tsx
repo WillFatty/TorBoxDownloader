@@ -10,6 +10,7 @@ import type {
   SearchResult,
   StreamResult,
 } from "@/lib/types";
+import { readJson } from "./LibraryShared";
 
 function formatStatus(status: DownloadJob["status"]) {
   return status.replace(/_/g, " ");
@@ -172,7 +173,10 @@ export function SearchWorkspace() {
       const params = new URLSearchParams({ q: query.trim() });
       if (typeFilter !== "all") params.set("type", typeFilter);
       const res = await fetch(`/api/search?${params}`);
-      const data = await res.json();
+      const data = await readJson<{
+        error?: string;
+        results?: SearchResult[];
+      }>(res);
       if (!res.ok) throw new Error(data.error || "Search failed");
       setResults(data.results || []);
     } catch (err) {
@@ -200,9 +204,9 @@ export function SearchWorkspace() {
     const res = await fetch(
       `/api/meta?type=${item.type}&id=${encodeURIComponent(item.imdbId)}`,
     );
-    const data = await res.json();
+    const data = await readJson<{ meta?: MediaMeta }>(res);
     if (res.ok) {
-      setMeta(data.meta);
+      setMeta(data.meta ?? null);
       if (item.type === "series" && data.meta?.videos?.length) {
         const first = data.meta.videos[0];
         setSeason(first.season);
@@ -238,7 +242,12 @@ export function SearchWorkspace() {
         params.set("episode", String(ep));
       }
       const res = await fetch(`/api/streams?${params}`);
-      const data = await res.json();
+      const data = await readJson<{
+        error?: string;
+        streams?: StreamResult[];
+        cacheError?: string | null;
+        cacheChecked?: boolean;
+      }>(res);
       if (!res.ok) throw new Error(data.error || "Failed to load streams");
       setStreams(data.streams || []);
       setCacheError(data.cacheError || null);
@@ -387,8 +396,15 @@ export function SearchWorkspace() {
           customFileName: useAutoName ? null : customName,
         }),
       });
-      const data = await res.json();
-      if (!res.ok) throw new Error(data.error || "Download failed");
+      const data = await readJson<{ error?: string; job?: DownloadJob & {
+        packSummary?: string;
+        multiEpisode?: boolean;
+        downloadPath?: string;
+      } }>(res);
+      if (!res.ok || !data.job) {
+        throw new Error(data.error || "Download failed");
+      }
+      const job = data.job;
       const msg = data.job.packSummary
         ? `Queued pack: ${data.job.packSummary}`
         : data.job.multiEpisode
@@ -399,8 +415,8 @@ export function SearchWorkspace() {
           ? `${msg} (detected ${picked.packHint} — all episodes will be saved)`
           : msg,
       );
-      setRecentJobs((prev) => [data.job, ...prev].slice(0, 5));
-      pollJob(data.job.id);
+      setRecentJobs((prev) => [job, ...prev].slice(0, 5));
+      pollJob(job.id);
       // refresh library after a bit when complete — poll handles status
     } catch (err) {
       setDownloadMsg(err instanceof Error ? err.message : "Download failed");
@@ -413,7 +429,7 @@ export function SearchWorkspace() {
     const tick = async () => {
       const res = await fetch(`/api/downloads/${id}`);
       if (!res.ok) return;
-      const data = await res.json();
+      const data = await readJson<{ job?: DownloadJob }>(res);
       const job = data.job as DownloadJob;
       setRecentJobs((prev) => {
         const rest = prev.filter((j) => j.id !== id);
@@ -448,7 +464,7 @@ export function SearchWorkspace() {
           <div className="toolbar-row">
             <div className="toolbar-copy">
               <h1>Find &amp; save</h1>
-              <p>Search → streams → TorBox → local library</p>
+              <p>Search → Comet → TorBox → local library</p>
             </div>
             <form onSubmit={runSearch} className="search-form">
               <div className="search-row">

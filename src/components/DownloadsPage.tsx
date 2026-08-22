@@ -3,6 +3,7 @@
 import { useEffect, useState } from "react";
 import { formatBytes, formatSpeed } from "@/lib/comet";
 import type { DownloadJob } from "@/lib/types";
+import { readJson } from "./LibraryShared";
 
 export function DownloadsPage() {
   const [jobs, setJobs] = useState<DownloadJob[]>([]);
@@ -11,7 +12,10 @@ export function DownloadsPage() {
   async function refresh() {
     try {
       const res = await fetch("/api/downloads");
-      const data = await res.json();
+      const data = await readJson<{
+        jobs?: DownloadJob[];
+        error?: string;
+      }>(res);
       if (!res.ok) throw new Error(data.error || "Failed");
       setJobs(data.jobs || []);
       setError(null);

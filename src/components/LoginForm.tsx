@@ -2,6 +2,7 @@
 
 import { FormEvent, useState } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
+import { readJson } from "./LibraryShared";
 
 export function LoginForm() {
   const router = useRouter();
@@ -25,7 +26,7 @@ export function LoginForm() {
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ password }),
       });
-      const data = await res.json();
+      const data = await readJson<{ error?: string; ok?: boolean }>(res);
       if (!res.ok) throw new Error(data.error || "Login failed");
       router.replace(next.startsWith("/") ? next : "/");
       router.refresh();

@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useState } from "react";
+import { readJson } from "./LibraryShared";
 
 interface SettingsView {
   torboxApiKey: string;
@@ -25,7 +26,10 @@ export function SettingsForm() {
   useEffect(() => {
     void (async () => {
       const res = await fetch("/api/settings");
-      const data = await res.json();
+      const data = await readJson<{
+        error?: string;
+        settings?: SettingsView;
+      }>(res);
       const s = data.settings as SettingsView;
       setForm({
         torboxApiKey: "",
@@ -55,14 +59,20 @@ export function SettingsForm() {
             : {}),
         }),
       });
-      const data = await res.json();
-      if (!res.ok) throw new Error(data.error || "Save failed");
-      setHasKey(data.settings.hasTorboxApiKey);
+      const data = await readJson<{
+        error?: string;
+        settings?: SettingsView;
+      }>(res);
+      if (!res.ok || !data.settings) {
+        throw new Error(data.error || "Save failed");
+      }
+      const saved = data.settings;
+      setHasKey(saved.hasTorboxApiKey);
       setForm((f) => ({
         ...f,
         torboxApiKey: "",
-        moviesPath: data.settings.moviesPath,
-        tvShowsPath: data.settings.tvShowsPath,
+        moviesPath: saved.moviesPath,
+        tvShowsPath: saved.tvShowsPath,
       }));
       setMsg("Saved.");
     } catch (err) {

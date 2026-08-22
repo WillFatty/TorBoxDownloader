@@ -4,6 +4,7 @@ import { useEffect, useMemo, useState } from "react";
 import { LibraryDetail } from "./LibraryDetail";
 import {
   ArtThumb,
+  readJson,
   type ArtworkEntry,
   type LibMovie,
   type LibSelection,
@@ -71,15 +72,24 @@ export function LibraryPage() {
   async function reloadLibrary() {
     try {
       const res = await fetch("/api/library");
-      const data = await res.json();
+      const data = await readJson<{
+        error?: string;
+        library?: {
+          movies?: LibMovie[];
+          shows?: LibShow[];
+          root?: string;
+          scannedAt?: string;
+        };
+      }>(res);
       if (!res.ok) throw new Error(data.error || "Scan failed");
-      setMovies(data.library.movies || []);
-      setShows(data.library.shows || []);
-      setRoot(data.library.root || "");
-      setScannedAt(data.library.scannedAt || "");
-      return data.library as {
-        movies: LibMovie[];
-        shows: LibShow[];
+      const library = data.library ?? {};
+      setMovies(library.movies || []);
+      setShows(library.shows || []);
+      setRoot(library.root || "");
+      setScannedAt(library.scannedAt || "");
+      return {
+        movies: library.movies || [],
+        shows: library.shows || [],
       };
     } catch (err) {
       setError(err instanceof Error ? err.message : "Scan failed");
@@ -161,9 +171,9 @@ export function LibraryPage() {
             }),
           });
           if (!res.ok) continue;
-          const data = (await res.json()) as {
+          const data = await readJson<{
             artwork?: Record<string, ArtworkEntry>;
-          };
+          }>(res);
           if (cancelled) return;
           setArt((prev) => ({ ...prev, ...(data.artwork || {}) }));
         } catch {
