@@ -1,66 +1,29 @@
 "use client";
 
-import { useEffect, useMemo, useState, type CSSProperties } from "react";
+import { useEffect, useMemo, useState } from "react";
+import { LibraryDetail } from "./LibraryDetail";
+import {
+  ArtThumb,
+  type ArtworkEntry,
+  type LibMovie,
+  type LibSelection,
+  type LibShow,
+} from "./LibraryShared";
 
-interface LibMovie {
+interface ArtworkItem {
+  key: string;
+  type: "movie" | "series";
   name: string;
   year: string | null;
-  fileCount: number;
-  files: string[];
-  folder: string;
 }
 
-interface LibShow {
-  name: string;
-  seasons: number[];
-  episodeCount: number;
-  folder: string;
-  episodes: Array<{ season: number; episode: number; fileName: string }>;
-}
+const ARTWORK_BATCH = 40;
 
-function tileInitials(name: string) {
-  const words = name
-    .replace(/[^\p{L}\p{N}\s]/gu, " ")
-    .trim()
-    .split(/\s+/)
-    .filter(Boolean);
-  if (!words.length) return "?";
-  if (words.length === 1) return words[0].slice(0, 2).toUpperCase();
-  return (words[0][0] + words[1][0]).toUpperCase();
-}
-
-function tileHue(name: string) {
-  let hash = 0;
-  for (let i = 0; i < name.length; i += 1) {
-    hash = (hash * 31 + name.charCodeAt(i)) % 3600;
-  }
-  return hash % 360;
-}
-
-function groupBySeason(episodes: LibShow["episodes"]) {
-  const bySeason = new Map<number, LibShow["episodes"]>();
-  for (const ep of episodes) {
-    const list = bySeason.get(ep.season);
-    if (list) list.push(ep);
-    else bySeason.set(ep.season, [ep]);
-  }
-  return [...bySeason.entries()]
-    .sort((a, b) => a[0] - b[0])
-    .map(([season, eps]) => ({
-      season,
-      eps: [...eps].sort((a, b) => a.episode - b.episode),
-    }));
-}
-
-function Chevron({ open }: { open: boolean }) {
+function OpenArrow() {
   return (
-    <svg
-      className={`lib-chev${open ? " is-open" : ""}`}
-      viewBox="0 0 24 24"
-      aria-hidden="true"
-    >
+    <svg className="lib-chev" viewBox="0 0 24 24" aria-hidden="true">
       <path
-        d="M6 9l6 6 6-6"
+        d="M9 6l6 6-6 6"
         fill="none"
         stroke="currentColor"
         strokeWidth="2"
@@ -80,7 +43,17 @@ export function LibraryPage() {
   const [scannedAt, setScannedAt] = useState("");
   const [error, setError] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
-  const [expanded, setExpanded] = useState<string | null>(null);
+  const [selection, setSelection] = useState<LibSelection | null>(null);
+  const [art, setArt] = useState<Record<string, ArtworkEntry>>({});
+  const [brokenArt, setBrokenArt] = useState<Record<string, true>>({});
+
+  function posterFor(key: string): string | null {
+    return brokenArt[key] ? null : art[key]?.poster ?? null;
+  }
+
+  function markArtBroken(key: string) {
+    setBrokenArt((prev) => ({ ...prev, [key]: true }));
+  }
 
   async function load() {
     setLoading(true);
@@ -103,6 +76,56 @@ export function LibraryPage() {
   useEffect(() => {
     void load();
   }, []);
+
+  // Posters come from Cinemeta, which only knows titles, so they're resolved
+  // after the scan and streamed in batches rather than blocking the listing.
+  useEffect(() => {
+    if (!movies.length && !shows.length) return;
+
+    const wanted: ArtworkItem[] = [
+      ...movies.map((m) => ({
+        key: m.folder,
+        type: "movie" as const,
+        name: m.name,
+        year: m.year,
+      })),
+      ...shows.map((s) => ({
+        key: s.folder,
+        type: "series" as const,
+        name: s.name,
+        year: null,
+      })),
+    ];
+
+    let cancelled = false;
+
+    void (async () => {
+      for (let i = 0; i < wanted.length; i += ARTWORK_BATCH) {
+        if (cancelled) return;
+        try {
+          const res = await fetch("/api/artwork", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({
+              items: wanted.slice(i, i + ARTWORK_BATCH),
+            }),
+          });
+          if (!res.ok) continue;
+          const data = (await res.json()) as {
+            artwork?: Record<string, ArtworkEntry>;
+          };
+          if (cancelled) return;
+          setArt((prev) => ({ ...prev, ...(data.artwork || {}) }));
+        } catch {
+          // Artwork is decorative; the lettered tiles stay as the fallback.
+        }
+      }
+    })();
+
+    return () => {
+      cancelled = true;
+    };
+  }, [movies, shows]);
 
   const filteredMovies = useMemo(() => {
     const needle = q.trim().toLowerCase();
@@ -243,46 +266,28 @@ export function LibraryPage() {
         <>
           {filteredMovies.length ? (
             <div className="lib-grid">
-              {filteredMovies.map((m) => {
-                const open = expanded === m.folder;
-                return (
-                  <div
-                    key={m.folder}
-                    className={`lib-card${open ? " is-open" : ""}`}
-                  >
-                    <button
-                      type="button"
-                      className="lib-card-head"
-                      aria-expanded={open}
-                      onClick={() => setExpanded(open ? null : m.folder)}
-                    >
-                      <span
-                        className="lib-tile"
-                        style={{ "--tile-hue": tileHue(m.name) } as CSSProperties}
-                      >
-                        {tileInitials(m.name)}
-                      </span>
-                      <span className="lib-card-meta">
-                        <span className="lib-card-title">{m.name}</span>
-                        <span className="lib-card-sub">
-                          {m.year || "Unknown year"} · {m.fileCount} file
-                          {m.fileCount === 1 ? "" : "s"}
-                        </span>
-                      </span>
-                      <Chevron open={open} />
-                    </button>
-                    {open && (
-                      <div className="lib-card-body">
-                        <ul className="lib-file-list">
-                          {m.files.map((f) => (
-                            <li key={f}>{f}</li>
-                          ))}
-                        </ul>
-                      </div>
-                    )}
-                  </div>
-                );
-              })}
+              {filteredMovies.map((m) => (
+                <button
+                  key={m.folder}
+                  type="button"
+                  className="lib-card"
+                  onClick={() => setSelection({ kind: "movie", movie: m })}
+                >
+                  <ArtThumb
+                    name={m.name}
+                    poster={posterFor(m.folder)}
+                    onError={() => markArtBroken(m.folder)}
+                  />
+                  <span className="lib-card-meta">
+                    <span className="lib-card-title">{m.name}</span>
+                    <span className="lib-card-sub">
+                      {m.year || "Unknown year"} · {m.fileCount} file
+                      {m.fileCount === 1 ? "" : "s"}
+                    </span>
+                  </span>
+                  <OpenArrow />
+                </button>
+              ))}
             </div>
           ) : (
             <div className="empty-state">
@@ -301,63 +306,29 @@ export function LibraryPage() {
         <>
           {filteredShows.length ? (
             <div className="lib-grid">
-              {filteredShows.map((s) => {
-                const open = expanded === s.folder;
-                return (
-                  <div
-                    key={s.folder}
-                    className={`lib-card${open ? " is-open" : ""}`}
-                  >
-                    <button
-                      type="button"
-                      className="lib-card-head"
-                      aria-expanded={open}
-                      onClick={() => setExpanded(open ? null : s.folder)}
-                    >
-                      <span
-                        className="lib-tile"
-                        style={{ "--tile-hue": tileHue(s.name) } as CSSProperties}
-                      >
-                        {tileInitials(s.name)}
-                      </span>
-                      <span className="lib-card-meta">
-                        <span className="lib-card-title">{s.name}</span>
-                        <span className="lib-card-sub">
-                          {s.seasons.length} season
-                          {s.seasons.length === 1 ? "" : "s"} ·{" "}
-                          {s.episodeCount} episode
-                          {s.episodeCount === 1 ? "" : "s"}
-                        </span>
-                      </span>
-                      <Chevron open={open} />
-                    </button>
-                    {open && (
-                      <div className="lib-card-body">
-                        {groupBySeason(s.episodes).map((group) => (
-                          <div key={group.season} className="lib-season">
-                            <p className="lib-season-title">
-                              Season {group.season}
-                              <span>{group.eps.length}</span>
-                            </p>
-                            <ul className="lib-ep-list">
-                              {group.eps.map((e) => (
-                                <li key={`${e.season}-${e.episode}-${e.fileName}`}>
-                                  <span className="lib-ep-num">
-                                    E{String(e.episode).padStart(2, "0")}
-                                  </span>
-                                  <span className="lib-ep-file">
-                                    {e.fileName}
-                                  </span>
-                                </li>
-                              ))}
-                            </ul>
-                          </div>
-                        ))}
-                      </div>
-                    )}
-                  </div>
-                );
-              })}
+              {filteredShows.map((s) => (
+                <button
+                  key={s.folder}
+                  type="button"
+                  className="lib-card"
+                  onClick={() => setSelection({ kind: "show", show: s })}
+                >
+                  <ArtThumb
+                    name={s.name}
+                    poster={posterFor(s.folder)}
+                    onError={() => markArtBroken(s.folder)}
+                  />
+                  <span className="lib-card-meta">
+                    <span className="lib-card-title">{s.name}</span>
+                    <span className="lib-card-sub">
+                      {s.seasons.length} season
+                      {s.seasons.length === 1 ? "" : "s"} · {s.episodeCount}{" "}
+                      episode{s.episodeCount === 1 ? "" : "s"}
+                    </span>
+                  </span>
+                  <OpenArrow />
+                </button>
+              ))}
             </div>
           ) : (
             <div className="empty-state">
@@ -370,6 +341,20 @@ export function LibraryPage() {
             </div>
           )}
         </>
+      )}
+
+      {selection && (
+        <LibraryDetail
+          selection={selection}
+          art={
+            art[
+              selection.kind === "movie"
+                ? selection.movie.folder
+                : selection.show.folder
+            ]
+          }
+          onClose={() => setSelection(null)}
+        />
       )}
     </div>
   );
