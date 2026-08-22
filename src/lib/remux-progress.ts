@@ -89,6 +89,28 @@ export function finishRemux(
   });
 }
 
+export interface RemuxLogEntry extends RemuxProgressEntry {
+  file: string;
+  fileName: string;
+  updatedAt: string;
+}
+
+/** All tracked remux entries (pruned), newest activity first. */
+export function listRemuxEntries(): RemuxLogEntry[] {
+  prune();
+  return [...entries.entries()]
+    .sort((a, b) => b[1].updatedAt - a[1].updatedAt)
+    .map(([key, entry]) => ({
+      file: key,
+      fileName: path.basename(key),
+      status: entry.status,
+      percent: entry.percent,
+      ...(entry.error ? { error: entry.error } : {}),
+      updatedAt: new Date(entry.updatedAt).toISOString(),
+    }))
+    .sort((a, b) => b.updatedAt.localeCompare(a.updatedAt));
+}
+
 export function getRemuxProgress(
   files: string[],
 ): Record<string, RemuxProgressEntry> {

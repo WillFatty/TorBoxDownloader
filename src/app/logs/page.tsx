@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import { DownloadsPage } from "@/components/DownloadsPage";
+import { LogsPage } from "@/components/LogsPage";
 
 export default function Page() {
   const [ready, setReady] = useState(false);
@@ -15,5 +15,5 @@ export default function Page() {
       </div>
     );
   }
-  return <DownloadsPage />;
+  return <LogsPage />;
 }

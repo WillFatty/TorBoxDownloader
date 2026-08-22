@@ -958,7 +958,7 @@ export function SearchWorkspace() {
                   >
                     Active / recent
                   </h3>
-                  <Link href="/downloads" className="text-accent" style={{ fontSize: "0.75rem", fontWeight: 500 }}>
+                  <Link href="/logs" className="text-accent" style={{ fontSize: "0.75rem", fontWeight: 500 }}>
                     View all
                   </Link>
                 </div>

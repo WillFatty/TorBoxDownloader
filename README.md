@@ -91,3 +91,6 @@ Separate folders for each library:
 - Download path must be writable by the Node process (local machine / server, not the browser).
 - Public Comet instances rate-limit; self-host for heavy use.
 - Jobs tracked in `data/jobs.json`. Active jobs fail on server restart.
+
+## TODO
+- Make jellyfin plugin
