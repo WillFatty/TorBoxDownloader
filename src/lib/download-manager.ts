@@ -25,7 +25,9 @@ import {
 } from "./torbox";
 import type { CreateDownloadInput, DownloadJob, DownloadStatus } from "./types";
 
-const JOBS_FILE = path.join(process.cwd(), "data", "jobs.json");
+const JOBS_FILE = process.env.JOBS_PATH
+  ? path.resolve(process.env.JOBS_PATH)
+  : path.join(process.cwd(), "data", "jobs.json");
 
 async function loadEpisodeTitleMap(
   imdbId: string | null | undefined,

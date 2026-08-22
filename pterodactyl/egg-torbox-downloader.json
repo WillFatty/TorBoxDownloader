@@ -1,0 +1,212 @@
+{
+  "_comment": "DO NOT EDIT: regenerate with python3 pterodactyl/build-egg.py",
+  "meta": {
+    "version": "PTDL_v2",
+    "update_url": null
+  },
+  "exported_at": "2026-08-22T15:48:01+00:00",
+  "name": "TorBox Downloader",
+  "author": "WillFatty@users.noreply.github.com",
+  "description": "Next.js TorBox/Jellyfin downloader. Optional CIFS SMB mount and GitHub auto-pull on startup.",
+  "features": null,
+  "docker_images": {
+    "TorBox Downloader": "torbox-downloader:latest"
+  },
+  "file_denylist": [],
+  "startup": "/opt/torbox/entrypoint.sh",
+  "config": {
+    "files": "{}",
+    "startup": "{\"done\": \"[app] Starting TorBox Downloader\",\"userInteraction\": []}",
+    "logs": "{}",
+    "stop": "^C"
+  },
+  "scripts": {
+    "installation": {
+      "script": "#!/bin/bash\n# Pterodactyl install script \u2014 runs in the install container (/mnt/server).\nset -euo pipefail\n\ncd /mnt/server\n\nGITHUB_REPO=\"${GITHUB_REPO:-https://github.com/WillFatty/TorBoxDownloader.git}\"\nGITHUB_BRANCH=\"${GITHUB_BRANCH:-main}\"\n\nif [ -n \"${GITHUB_TOKEN:-}\" ]; then\n  GIT_URL=\"https://${GITHUB_TOKEN}@${GITHUB_REPO#https://}\"\nelse\n  GIT_URL=\"${GITHUB_REPO}\"\nfi\n\nif [ ! -d .git ]; then\n  echo \"Cloning ${GITHUB_REPO} (branch ${GITHUB_BRANCH})...\"\n  git clone --depth 1 --branch \"${GITHUB_BRANCH}\" \"${GIT_URL}\" .\nelse\n  echo \"Updating existing repository...\"\n  git remote set-url origin \"${GIT_URL}\" 2>/dev/null || true\n  git fetch origin \"${GITHUB_BRANCH}\" --depth 1\n  git reset --hard \"origin/${GITHUB_BRANCH}\"\n  git clean -fd\nfi\n\necho \"Installing dependencies...\"\nnpm ci\n\necho \"Building Next.js (standalone)...\"\nnpm run build\n\necho \"Preparing standalone bundle...\"\nmkdir -p .next/standalone/.next\ncp -a .next/static .next/standalone/.next/static\ncp -a public .next/standalone/public\n\nmkdir -p data\ntouch data/.keep\n\necho \"Install complete.\"\n",
+      "container": "ghcr.io/pterodactyl/yolks:nodejs_22",
+      "entrypoint": "bash"
+    }
+  },
+  "variables": [
+    {
+      "name": "GitHub Repository",
+      "description": "Repository to clone on install and pull on startup.",
+      "env_variable": "GITHUB_REPO",
+      "default_value": "https://github.com/WillFatty/TorBoxDownloader.git",
+      "user_viewable": true,
+      "user_editable": true,
+      "rules": "required|string",
+      "field_type": "text"
+    },
+    {
+      "name": "GitHub Branch",
+      "description": "Branch to track for install and auto-pull.",
+      "env_variable": "GITHUB_BRANCH",
+      "default_value": "main",
+      "user_viewable": true,
+      "user_editable": true,
+      "rules": "required|string|max:64",
+      "field_type": "text"
+    },
+    {
+      "name": "GitHub Auto Pull",
+      "description": "Pull latest code from GitHub on each server start (1 = yes, 0 = no).",
+      "env_variable": "GITHUB_AUTO_PULL",
+      "default_value": "1",
+      "user_viewable": true,
+      "user_editable": true,
+      "rules": "required|boolean",
+      "field_type": "text"
+    },
+    {
+      "name": "GitHub Rebuild On Pull",
+      "description": "Run npm ci && npm run build after git pull (1 = yes, 0 = no).",
+      "env_variable": "GITHUB_REBUILD_ON_PULL",
+      "default_value": "1",
+      "user_viewable": true,
+      "user_editable": true,
+      "rules": "required|boolean",
+      "field_type": "text"
+    },
+    {
+      "name": "GitHub Token",
+      "description": "Optional PAT for private repos (leave empty for public).",
+      "env_variable": "GITHUB_TOKEN",
+      "default_value": "",
+      "user_viewable": true,
+      "user_editable": true,
+      "rules": "nullable|string|max:255",
+      "field_type": "text"
+    },
+    {
+      "name": "SMB Enabled",
+      "description": "Mount a CIFS/SMB share before starting (1 = yes, 0 = no). Requires SYS_ADMIN on Wings.",
+      "env_variable": "SMB_ENABLED",
+      "default_value": "1",
+      "user_viewable": true,
+      "user_editable": true,
+      "rules": "required|boolean",
+      "field_type": "text"
+    },
+    {
+      "name": "SMB Server",
+      "description": "SMB host/IP (without share path). Example: 192.168.0.234",
+      "env_variable": "SMB_SERVER",
+      "default_value": "192.168.0.234",
+      "user_viewable": true,
+      "user_editable": true,
+      "rules": "nullable|string|max:255",
+      "field_type": "text"
+    },
+    {
+      "name": "SMB Share",
+      "description": "Share name on the server. Example: big_pool",
+      "env_variable": "SMB_SHARE",
+      "default_value": "big_pool",
+      "user_viewable": true,
+      "user_editable": true,
+      "rules": "nullable|string|max:255",
+      "field_type": "text"
+    },
+    {
+      "name": "SMB Mount Point",
+      "description": "Local mount path inside the container. Example: /raid2",
+      "env_variable": "SMB_MOUNT_POINT",
+      "default_value": "/raid2",
+      "user_viewable": true,
+      "user_editable": true,
+      "rules": "required|string|max:255",
+      "field_type": "text"
+    },
+    {
+      "name": "SMB Username",
+      "description": "CIFS username.",
+      "env_variable": "SMB_USERNAME",
+      "default_value": "",
+      "user_viewable": true,
+      "user_editable": true,
+      "rules": "nullable|string|max:255",
+      "field_type": "text"
+    },
+    {
+      "name": "SMB Password",
+      "description": "CIFS password.",
+      "env_variable": "SMB_PASSWORD",
+      "default_value": "",
+      "user_viewable": true,
+      "user_editable": true,
+      "rules": "nullable|string|max:255",
+      "field_type": "text"
+    },
+    {
+      "name": "SMB Domain",
+      "description": "Optional Windows domain/workgroup.",
+      "env_variable": "SMB_DOMAIN",
+      "default_value": "",
+      "user_viewable": true,
+      "user_editable": true,
+      "rules": "nullable|string|max:255",
+      "field_type": "text"
+    },
+    {
+      "name": "Movies Path",
+      "description": "Jellyfin movies folder (usually under the SMB mount).",
+      "env_variable": "MOVIES_PATH",
+      "default_value": "/raid2/Jellyfin/Movies",
+      "user_viewable": true,
+      "user_editable": true,
+      "rules": "required|string|max:512",
+      "field_type": "text"
+    },
+    {
+      "name": "TV Shows Path",
+      "description": "Jellyfin TV shows folder (usually under the SMB mount).",
+      "env_variable": "TV_SHOWS_PATH",
+      "default_value": "/raid2/Jellyfin/TV-Shows",
+      "user_viewable": true,
+      "user_editable": true,
+      "rules": "required|string|max:512",
+      "field_type": "text"
+    },
+    {
+      "name": "TorBox API Key",
+      "description": "From https://torbox.app/settings",
+      "env_variable": "TORBOX_API_KEY",
+      "default_value": "",
+      "user_viewable": true,
+      "user_editable": true,
+      "rules": "nullable|string|max:512",
+      "field_type": "text"
+    },
+    {
+      "name": "Comet URL",
+      "description": "Comet instance base URL (no trailing slash).",
+      "env_variable": "COMET_URL",
+      "default_value": "https://comet.elfhosted.com",
+      "user_viewable": true,
+      "user_editable": true,
+      "rules": "required|string|max:512",
+      "field_type": "text"
+    },
+    {
+      "name": "Site Password",
+      "description": "Website login password (required).",
+      "env_variable": "SITE_PASSWORD",
+      "default_value": "changeme",
+      "user_viewable": true,
+      "user_editable": true,
+      "rules": "required|string|min:4|max:255",
+      "field_type": "text"
+    },
+    {
+      "name": "Auth Secret",
+      "description": "Optional cookie signing secret (defaults to Site Password).",
+      "env_variable": "AUTH_SECRET",
+      "default_value": "",
+      "user_viewable": true,
+      "user_editable": true,
+      "rules": "nullable|string|max:255",
+      "field_type": "text"
+    }
+  ]
+}

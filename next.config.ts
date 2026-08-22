@@ -1,7 +1,8 @@
 import type { NextConfig } from "next";
 
 const nextConfig: NextConfig = {
-  allowedDevOrigins: ['tbd.saltbox.cc'],
+  output: "standalone",
+  allowedDevOrigins: ["tbd.saltbox.cc"],
 };
 
 export default nextConfig;

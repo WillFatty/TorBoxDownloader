@@ -52,3 +52,13 @@ Separate folders for each library:
 - Download path must be writable by the Node process (local machine / server, not the browser).
 - Public Comet instances rate-limit; self-host for heavy use.
 - Jobs tracked in `data/jobs.json`. Active jobs fail on server restart.
+
+## Pterodactyl
+
+Deploy on Pterodactyl with SMB mount + GitHub auto-pull:
+
+1. Build the image: `docker build -f pterodactyl/Dockerfile -t torbox-downloader:latest .`
+2. Import `pterodactyl/egg-torbox-downloader.json` in the panel
+3. Configure SMB and GitHub variables (see [pterodactyl/README.md](pterodactyl/README.md))
+
+Wings needs `CAP_SYS_ADMIN` for in-container CIFS mounts, or mount the share on the host and bind it in.
