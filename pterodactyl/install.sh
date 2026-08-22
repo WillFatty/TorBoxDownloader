@@ -2,6 +2,14 @@
 # Pterodactyl install script — runs in the install container (/mnt/server).
 set -euo pipefail
 
+# Install container may be plain node:22-bookworm-slim (no git).
+if ! command -v git >/dev/null 2>&1; then
+  echo "Installing git..."
+  apt-get update
+  apt-get install -y --no-install-recommends git ca-certificates
+  rm -rf /var/lib/apt/lists/*
+fi
+
 cd /mnt/server
 
 GITHUB_REPO="${GITHUB_REPO:-https://github.com/WillFatty/TorBoxDownloader.git}"

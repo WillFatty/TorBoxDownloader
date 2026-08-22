@@ -1,5 +1,5 @@
 # Optional custom image for in-container CIFS mounts.
-# The default egg uses ghcr.io/pterodactyl/yolks:nodejs_22 — no build required.
+# The default egg uses ghcr.io/ptero-eggs/yolks:nodejs_22 — no build required.
 #
 # Build from repo root:
 #   docker build -f pterodactyl/Dockerfile -t torbox-downloader:latest .

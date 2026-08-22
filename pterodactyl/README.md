@@ -7,15 +7,15 @@ Run TorBox Downloader on [Pterodactyl Wings](https://pterodactyl.io/) with:
 
 ## No custom Docker build required
 
-The egg uses the public image **`ghcr.io/pterodactyl/yolks:nodejs_22`**, which Wings can pull automatically. You do **not** need to run `docker build` unless you want a custom image (see optional section below).
+The egg uses **`ghcr.io/ptero-eggs/yolks:nodejs_22`** by default (community-maintained Pterodactyl yolk with git preinstalled). Official `ghcr.io/pterodactyl/yolks` only publishes up to Node 20 — **`nodejs_22` does not exist there**, which caused the `not found` error.
 
-The old egg default `torbox-downloader:latest` failed because that name is **not on Docker Hub** — Docker only finds it if you build and tag it locally on the Wings node yourself.
+You do **not** need to run `docker build` unless you want a custom image (see optional section below).
 
 ## 1. Import the egg
 
 1. Admin → **Nests** → choose a nest → **Import Egg**
 2. Upload `pterodactyl/egg-torbox-downloader.json`
-3. Confirm **Docker Images** shows `ghcr.io/pterodactyl/yolks:nodejs_22`
+3. Confirm **Docker Images** shows `ghcr.io/ptero-eggs/yolks:nodejs_22` (or pick **Node 22 (Docker Hub)** if GHCR is blocked — set `GITHUB_AUTO_PULL=0` on that image, it has no git)
 4. Create a **Server** using this egg and run **Install**
 
 Regenerate the egg after editing `install.sh`:
@@ -93,7 +93,8 @@ Then change the egg/server **Docker Image** to `torbox-downloader:latest` on tha
 
 ## Troubleshooting
 
-- **`pull access denied for torbox-downloader`** — Re-import the updated egg so the image is `ghcr.io/pterodactyl/yolks:nodejs_22`, or build/tag the custom image locally.
+- **`not found` for `ghcr.io/pterodactyl/yolks:nodejs_22`** — that tag does not exist. Re-import the egg; use `ghcr.io/ptero-eggs/yolks:nodejs_22` or `node:22-bookworm-slim`.
+- **`pull access denied for torbox-downloader`** — old egg image name; re-import the updated egg.
 - **`server.js not found`** — Run **Reinstall** from the panel (install script builds the app).
 - **Build failed on pull** — allocate at least 2 GB RAM; Next.js production builds are memory-heavy.
 - **Permission denied on library** — host share `uid`/`gid` must match the user Wings runs the container as (often 988 or 1000).

@@ -4,13 +4,15 @@
     "version": "PTDL_v2",
     "update_url": null
   },
-  "exported_at": "2026-08-22T15:51:07+00:00",
+  "exported_at": "2026-08-22T15:54:00+00:00",
   "name": "TorBox Downloader",
   "author": "WillFatty@users.noreply.github.com",
   "description": "Next.js TorBox/Jellyfin downloader. Optional CIFS SMB mount and GitHub auto-pull on startup.",
   "features": null,
   "docker_images": {
-    "Node.js 22": "ghcr.io/pterodactyl/yolks:nodejs_22"
+    "Node.js 22": "ghcr.io/ptero-eggs/yolks:nodejs_22",
+    "Node.js 20": "ghcr.io/ptero-eggs/yolks:nodejs_20",
+    "Node 22 (Docker Hub)": "node:22-bookworm-slim"
   },
   "file_denylist": [],
   "startup": "bash /home/container/pterodactyl/entrypoint.sh",
@@ -22,8 +24,8 @@
   },
   "scripts": {
     "installation": {
-      "script": "#!/bin/bash\n# Pterodactyl install script \u2014 runs in the install container (/mnt/server).\nset -euo pipefail\n\ncd /mnt/server\n\nGITHUB_REPO=\"${GITHUB_REPO:-https://github.com/WillFatty/TorBoxDownloader.git}\"\nGITHUB_BRANCH=\"${GITHUB_BRANCH:-main}\"\n\nif [ -n \"${GITHUB_TOKEN:-}\" ]; then\n  GIT_URL=\"https://${GITHUB_TOKEN}@${GITHUB_REPO#https://}\"\nelse\n  GIT_URL=\"${GITHUB_REPO}\"\nfi\n\nif [ ! -d .git ]; then\n  echo \"Cloning ${GITHUB_REPO} (branch ${GITHUB_BRANCH})...\"\n  git clone --depth 1 --branch \"${GITHUB_BRANCH}\" \"${GIT_URL}\" .\nelse\n  echo \"Updating existing repository...\"\n  git remote set-url origin \"${GIT_URL}\" 2>/dev/null || true\n  git fetch origin \"${GITHUB_BRANCH}\" --depth 1\n  git reset --hard \"origin/${GITHUB_BRANCH}\"\n  git clean -fd\nfi\n\necho \"Installing dependencies...\"\nnpm ci\n\necho \"Building Next.js (standalone)...\"\nnpm run build\n\necho \"Preparing standalone bundle...\"\nmkdir -p .next/standalone/.next\ncp -a .next/static .next/standalone/.next/static\ncp -a public .next/standalone/public\n\nmkdir -p data\ntouch data/.keep\n\necho \"Install complete.\"\n",
-      "container": "ghcr.io/pterodactyl/yolks:nodejs_22",
+      "script": "#!/bin/bash\n# Pterodactyl install script \u2014 runs in the install container (/mnt/server).\nset -euo pipefail\n\n# Install container may be plain node:22-bookworm-slim (no git).\nif ! command -v git >/dev/null 2>&1; then\n  echo \"Installing git...\"\n  apt-get update\n  apt-get install -y --no-install-recommends git ca-certificates\n  rm -rf /var/lib/apt/lists/*\nfi\n\ncd /mnt/server\n\nGITHUB_REPO=\"${GITHUB_REPO:-https://github.com/WillFatty/TorBoxDownloader.git}\"\nGITHUB_BRANCH=\"${GITHUB_BRANCH:-main}\"\n\nif [ -n \"${GITHUB_TOKEN:-}\" ]; then\n  GIT_URL=\"https://${GITHUB_TOKEN}@${GITHUB_REPO#https://}\"\nelse\n  GIT_URL=\"${GITHUB_REPO}\"\nfi\n\nif [ ! -d .git ]; then\n  echo \"Cloning ${GITHUB_REPO} (branch ${GITHUB_BRANCH})...\"\n  git clone --depth 1 --branch \"${GITHUB_BRANCH}\" \"${GIT_URL}\" .\nelse\n  echo \"Updating existing repository...\"\n  git remote set-url origin \"${GIT_URL}\" 2>/dev/null || true\n  git fetch origin \"${GITHUB_BRANCH}\" --depth 1\n  git reset --hard \"origin/${GITHUB_BRANCH}\"\n  git clean -fd\nfi\n\necho \"Installing dependencies...\"\nnpm ci\n\necho \"Building Next.js (standalone)...\"\nnpm run build\n\necho \"Preparing standalone bundle...\"\nmkdir -p .next/standalone/.next\ncp -a .next/static .next/standalone/.next/static\ncp -a public .next/standalone/public\n\nmkdir -p data\ntouch data/.keep\n\necho \"Install complete.\"\n",
+      "container": "node:22-bookworm-slim",
       "entrypoint": "bash"
     }
   },

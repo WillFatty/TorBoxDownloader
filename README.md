@@ -57,6 +57,6 @@ Separate folders for each library:
 
 Deploy on Pterodactyl with GitHub auto-pull and SMB library access:
 
-1. Import `pterodactyl/egg-torbox-downloader.json` in the panel (uses public `ghcr.io/pterodactyl/yolks:nodejs_22` — no custom Docker build needed)
+1. Import `pterodactyl/egg-torbox-downloader.json` in the panel (default image: `ghcr.io/ptero-eggs/yolks:nodejs_22`)
 2. Bind-mount your host `/raid2` share in **Server → Mounts**
 3. Configure variables (see [pterodactyl/README.md](pterodactyl/README.md))

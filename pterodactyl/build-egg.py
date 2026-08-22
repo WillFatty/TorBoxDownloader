@@ -28,7 +28,9 @@ EGG = {
     "description": "Next.js TorBox/Jellyfin downloader. Optional CIFS SMB mount and GitHub auto-pull on startup.",
     "features": None,
     "docker_images": {
-        "Node.js 22": "ghcr.io/pterodactyl/yolks:nodejs_22",
+        "Node.js 22": "ghcr.io/ptero-eggs/yolks:nodejs_22",
+        "Node.js 20": "ghcr.io/ptero-eggs/yolks:nodejs_20",
+        "Node 22 (Docker Hub)": "node:22-bookworm-slim",
     },
     "file_denylist": [],
     "startup": "bash /home/container/pterodactyl/entrypoint.sh",
@@ -41,7 +43,7 @@ EGG = {
     "scripts": {
         "installation": {
             "script": INSTALL,
-            "container": "ghcr.io/pterodactyl/yolks:nodejs_22",
+            "container": "node:22-bookworm-slim",
             "entrypoint": "bash",
         },
     },
