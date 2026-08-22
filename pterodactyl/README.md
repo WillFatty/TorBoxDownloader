@@ -2,60 +2,21 @@
 
 Run TorBox Downloader on [Pterodactyl Wings](https://pterodactyl.io/) with:
 
-- **CIFS/SMB mount** for your Jellyfin library (e.g. `//192.168.0.234/big_pool` → `/raid2`)
-- **GitHub auto-pull** on each start (optional rebuild)
+- **GitHub clone + auto-pull** on install/startup
+- **SMB library access** via a host bind mount (recommended) or optional in-container CIFS
 
-## 1. Build the Docker image (on each Wings node)
+## No custom Docker build required
 
-From the repo root:
+The egg uses the public image **`ghcr.io/pterodactyl/yolks:nodejs_22`**, which Wings can pull automatically. You do **not** need to run `docker build` unless you want a custom image (see optional section below).
 
-```bash
-docker build -f pterodactyl/Dockerfile -t torbox-downloader:latest .
-```
+The old egg default `torbox-downloader:latest` failed because that name is **not on Docker Hub** — Docker only finds it if you build and tag it locally on the Wings node yourself.
 
-Or push to a registry and use that tag in the egg / panel **Docker Images** field.
-
-The image includes `cifs-utils`, `git`, and `gosu`. The entrypoint runs as root to mount SMB, then drops to UID **1000** (matching `uid=1000,gid=1000` on your share).
-
-## 2. SMB / CIFS access
-
-Pterodactyl runs game containers as a **non-root** user, so `mount.cifs` usually cannot run inside the container. Use **one** of these:
-
-### Option A — Host mount + Panel bind (recommended)
-
-Keep your existing host fstab:
-
-```fstab
-//192.168.0.234/big_pool  /raid2  cifs  credentials=/root/.smbcredentials2,iocharset=utf8,vers=3.0,_netdev,uid=1000,gid=1000,file_mode=0775,dir_mode=0775  0  0
-```
-
-On the Wings node, allow the path in `/etc/pterodactyl/config.yml`:
-
-```yaml
-allowed_mounts:
-  - /raid2
-```
-
-In the Pterodactyl panel: **Server → Mounts** → add:
-
-| Source (host) | Target (container) |
-| --- | --- |
-| `/raid2` | `/raid2` |
-
-Set egg variable **`SMB_ENABLED=0`**. Set `MOVIES_PATH` / `TV_SHOWS_PATH` under `/raid2/...`.
-
-### Option B — In-container mount (advanced)
-
-Requires the container to start as **root** with **`CAP_SYS_ADMIN`** on Wings. Set egg variables (`SMB_ENABLED=1`, server, share, username, password). The entrypoint writes credentials and mounts with the same options as your fstab (`vers=3.0`, `uid=1000`, etc.).
-
-If mount fails, check Wings logs and `pterodactyl/entrypoint.sh` output.
-
-## 3. Import the egg
+## 1. Import the egg
 
 1. Admin → **Nests** → choose a nest → **Import Egg**
 2. Upload `pterodactyl/egg-torbox-downloader.json`
-3. Open the new egg → **Docker Images** → set image to `torbox-downloader:latest` (or your registry URL)
-4. Create a **Server** using this egg
+3. Confirm **Docker Images** shows `ghcr.io/pterodactyl/yolks:nodejs_22`
+4. Create a **Server** using this egg and run **Install**
 
 Regenerate the egg after editing `install.sh`:
 
@@ -63,15 +24,46 @@ Regenerate the egg after editing `install.sh`:
 python3 pterodactyl/build-egg.py
 ```
 
-## 4. Egg variables (defaults match your setup)
+## 2. SMB / library access (recommended: host bind mount)
+
+You already mount the share on the Wings **host**:
+
+```fstab
+//192.168.0.234/big_pool  /raid2  cifs  credentials=/root/.smbcredentials2,iocharset=utf8,vers=3.0,_netdev,uid=1000,gid=1000,file_mode=0775,dir_mode=0775  0  0
+```
+
+Expose it to the server container:
+
+1. In `/etc/pterodactyl/config.yml` on the Wings node:
+
+```yaml
+allowed_mounts:
+  - /raid2
+```
+
+2. In the panel: **Server → Mounts** → add:
+
+| Source (host) | Target (container) |
+| --- | --- |
+| `/raid2` | `/raid2` |
+
+3. Set egg variable **`SMB_ENABLED=0`** (default). Set `MOVIES_PATH` / `TV_SHOWS_PATH` under `/raid2/...`.
+
+Pterodactyl containers run as a non-root user, so in-container `mount.cifs` usually does not work on the standard yolk. The host fstab + panel bind mount is the reliable path.
+
+### Optional: in-container SMB (`SMB_ENABLED=1`)
+
+Only if you build the optional custom image (includes `cifs-utils`) and run the container with root + `CAP_SYS_ADMIN`. See **Optional custom Docker image** below.
+
+## 3. Egg variables
 
 | Variable | Purpose |
 | --- | --- |
-| `SMB_ENABLED` | `1` to mount on startup |
+| `SMB_ENABLED` | `0` = use panel bind mount (default). `1` = try in-container mount |
 | `SMB_SERVER` | e.g. `192.168.0.234` |
 | `SMB_SHARE` | e.g. `big_pool` |
 | `SMB_MOUNT_POINT` | e.g. `/raid2` |
-| `SMB_USERNAME` / `SMB_PASSWORD` | CIFS credentials |
+| `SMB_USERNAME` / `SMB_PASSWORD` | CIFS credentials (only if `SMB_ENABLED=1`) |
 | `MOVIES_PATH` | e.g. `/raid2/Jellyfin/Movies` |
 | `TV_SHOWS_PATH` | e.g. `/raid2/Jellyfin/TV-Shows` |
 | `GITHUB_REPO` | `https://github.com/WillFatty/TorBoxDownloader.git` |
@@ -83,31 +75,25 @@ python3 pterodactyl/build-egg.py
 
 Persistent app state (`settings.json`, `jobs.json`) lives in `/home/container/data` via `SETTINGS_PATH` and `JOBS_PATH`.
 
-## 5. Host fstab equivalent
-
-Your host line:
-
-```fstab
-//192.168.0.234/big_pool  /raid2  cifs  credentials=/root/.smbcredentials2,iocharset=utf8,vers=3.0,_netdev,uid=1000,gid=1000,file_mode=0775,dir_mode=0775  0  0
-```
-
-Egg equivalent (set in panel variables):
-
-- `SMB_SERVER=192.168.0.234`
-- `SMB_SHARE=big_pool`
-- `SMB_MOUNT_POINT=/raid2`
-- `SMB_USERNAME` / `SMB_PASSWORD` from your credentials file
-
-Mount options in `entrypoint.sh`: `iocharset=utf8,vers=3.0,uid=1000,gid=1000,file_mode=0775,dir_mode=0775`.
-
-## 6. Install & startup flow
+## 4. Install & startup flow
 
 **Install** (`install.sh`): clone GitHub → `npm ci` → `npm run build` → copy static assets into `.next/standalone/`.
 
-**Startup** (`entrypoint.sh`): optional SMB mount → optional git pull/rebuild → `node .next/standalone/server.js` on `SERVER_PORT`.
+**Startup** (`pterodactyl/entrypoint.sh`): optional SMB check/mount → optional git pull/rebuild → `node .next/standalone/server.js` on `SERVER_PORT`.
+
+## Optional custom Docker image
+
+Only needed for in-container CIFS mounts. From the repo root:
+
+```bash
+docker build -f pterodactyl/Dockerfile -t torbox-downloader:latest .
+```
+
+Then change the egg/server **Docker Image** to `torbox-downloader:latest` on that Wings node (or push to a registry and reference that URL).
 
 ## Troubleshooting
 
-- **Mount failed** — Wings missing `SYS_ADMIN`, wrong SMB credentials, or firewall blocking port 445.
-- **Build failed on pull** — increase server memory; Next.js build needs ~1–2 GB RAM.
-- **Permission denied on library** — share must allow UID 1000 write access (same as your fstab `uid`/`gid`).
+- **`pull access denied for torbox-downloader`** — Re-import the updated egg so the image is `ghcr.io/pterodactyl/yolks:nodejs_22`, or build/tag the custom image locally.
+- **`server.js not found`** — Run **Reinstall** from the panel (install script builds the app).
+- **Build failed on pull** — allocate at least 2 GB RAM; Next.js production builds are memory-heavy.
+- **Permission denied on library** — host share `uid`/`gid` must match the user Wings runs the container as (often 988 or 1000).

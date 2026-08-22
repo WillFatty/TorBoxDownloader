@@ -1,8 +1,8 @@
-# Custom Pterodactyl image for TorBox Downloader.
+# Optional custom image for in-container CIFS mounts.
+# The default egg uses ghcr.io/pterodactyl/yolks:nodejs_22 — no build required.
+#
 # Build from repo root:
 #   docker build -f pterodactyl/Dockerfile -t torbox-downloader:latest .
-#
-# Push to your registry and set the image in the egg (or panel Docker Images).
 
 FROM node:22-bookworm-slim
 

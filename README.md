@@ -55,10 +55,8 @@ Separate folders for each library:
 
 ## Pterodactyl
 
-Deploy on Pterodactyl with SMB mount + GitHub auto-pull:
+Deploy on Pterodactyl with GitHub auto-pull and SMB library access:
 
-1. Build the image: `docker build -f pterodactyl/Dockerfile -t torbox-downloader:latest .`
-2. Import `pterodactyl/egg-torbox-downloader.json` in the panel
-3. Configure SMB and GitHub variables (see [pterodactyl/README.md](pterodactyl/README.md))
-
-Wings needs `CAP_SYS_ADMIN` for in-container CIFS mounts, or mount the share on the host and bind it in.
+1. Import `pterodactyl/egg-torbox-downloader.json` in the panel (uses public `ghcr.io/pterodactyl/yolks:nodejs_22` — no custom Docker build needed)
+2. Bind-mount your host `/raid2` share in **Server → Mounts**
+3. Configure variables (see [pterodactyl/README.md](pterodactyl/README.md))

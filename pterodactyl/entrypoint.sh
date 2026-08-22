@@ -125,7 +125,7 @@ start_app() {
 
   echo "[app] Starting TorBox Downloader on 0.0.0.0:${PORT}"
   cd .next/standalone
-  exec gosu container:container node server.js
+  exec node server.js
 }
 
 mount_smb

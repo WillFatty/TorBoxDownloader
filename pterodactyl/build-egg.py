@@ -28,10 +28,10 @@ EGG = {
     "description": "Next.js TorBox/Jellyfin downloader. Optional CIFS SMB mount and GitHub auto-pull on startup.",
     "features": None,
     "docker_images": {
-        "TorBox Downloader": "torbox-downloader:latest",
+        "Node.js 22": "ghcr.io/pterodactyl/yolks:nodejs_22",
     },
     "file_denylist": [],
-    "startup": "/opt/torbox/entrypoint.sh",
+    "startup": "bash /home/container/pterodactyl/entrypoint.sh",
     "config": {
         "files": "{}",
         "startup": STARTUP_CONFIG,
@@ -100,7 +100,7 @@ EGG = {
             "name": "SMB Enabled",
             "description": "Mount a CIFS/SMB share before starting (1 = yes, 0 = no). Requires SYS_ADMIN on Wings.",
             "env_variable": "SMB_ENABLED",
-            "default_value": "1",
+            "default_value": "0",
             "user_viewable": True,
             "user_editable": True,
             "rules": "required|boolean",
