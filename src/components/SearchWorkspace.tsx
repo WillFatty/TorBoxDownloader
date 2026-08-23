@@ -573,7 +573,7 @@ export function SearchWorkspace() {
                       Browse library
                     </Link>
                     <Link href="/logs" className="btn-secondary">
-                      Download logs
+                      Logs
                     </Link>
                   </div>
                 </section>
@@ -581,8 +581,8 @@ export function SearchWorkspace() {
                 <div className="home-steps">
                   {[
                     ["Search", "Cinemeta lookup across movies & TV"],
-                    ["Pick", "Comet streams ranked by quality & caching"],
-                    ["Download", "TorBox grabs it, live progress on Logs"],
+                    ["Pick", "Comet streams ranked by caching"],
+                    ["Download", "TorBox grabs it with live progress"],
                     ["Auto-filed", "Named & sorted into Movies / Seasons"],
                   ].map(([title, desc], i) => (
                     <div key={title} className="home-step">
