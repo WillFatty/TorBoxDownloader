@@ -1,3 +1,4 @@
+import { promises as fs } from "fs";
 import path from "path";
 
 export type RemuxStatus =
@@ -17,20 +18,80 @@ interface StoreEntry extends RemuxProgressEntry {
   updatedAt: number;
 }
 
-const TTL_MS = 10 * 60 * 1000;
-const entries = new Map<string, StoreEntry>();
-
-function prune() {
-  const now = Date.now();
-  for (const [key, entry] of entries) {
-    if (entry.status !== "working" && now - entry.updatedAt > TTL_MS) {
-      entries.delete(key);
-    }
-  }
+interface StoredEntry extends StoreEntry {
+  file: string;
 }
+
+const DATA_DIR = path.join(process.cwd(), "data");
+const LOG_FILE = path.join(DATA_DIR, "remux-log.json");
+const MAX_ENTRIES = 500;
+
+const entries = new Map<string, StoreEntry>();
 
 function keyOf(filePath: string): string {
   return path.resolve(filePath);
+}
+
+async function load(): Promise<void> {
+  let parsed: unknown;
+  try {
+    parsed = JSON.parse(await fs.readFile(LOG_FILE, "utf8"));
+  } catch {
+    return;
+  }
+  if (!Array.isArray(parsed)) return;
+  for (const item of parsed as StoredEntry[]) {
+    if (!item || typeof item.file !== "string" || !item.status) continue;
+    const orphaned = item.status === "queued" || item.status === "working";
+    entries.set(item.file, {
+      status: orphaned ? "failed" : item.status,
+      percent: Number(item.percent) || 0,
+      error: orphaned
+        ? "Interrupted by server restart"
+        : item.error
+          ? String(item.error)
+          : undefined,
+      updatedAt: Number(item.updatedAt) || 0,
+    });
+  }
+}
+
+void load();
+
+let saveTimer: ReturnType<typeof setTimeout> | null = null;
+
+function scheduleSave(delayMs: number): void {
+  if (saveTimer) return;
+  saveTimer = setTimeout(() => {
+    saveTimer = null;
+    void save();
+  }, delayMs);
+}
+
+function flushSave(): void {
+  if (saveTimer) {
+    clearTimeout(saveTimer);
+    saveTimer = null;
+  }
+  void save();
+}
+
+async function save(): Promise<void> {
+  if (entries.size > MAX_ENTRIES) {
+    const overflow = [...entries.entries()]
+      .sort((a, b) => a[1].updatedAt - b[1].updatedAt)
+      .slice(0, entries.size - MAX_ENTRIES);
+    for (const [key] of overflow) entries.delete(key);
+  }
+  const list: StoredEntry[] = [...entries.entries()]
+    .sort((a, b) => b[1].updatedAt - a[1].updatedAt)
+    .map(([file, entry]) => ({ file, ...entry }));
+  try {
+    await fs.mkdir(DATA_DIR, { recursive: true });
+    await fs.writeFile(LOG_FILE, JSON.stringify(list, null, 2), "utf8");
+  } catch {
+    return;
+  }
 }
 
 export function beginRemux(filePath: string): void {
@@ -39,6 +100,7 @@ export function beginRemux(filePath: string): void {
     percent: 0,
     updatedAt: Date.now(),
   });
+  scheduleSave(300);
 }
 
 export function markRemuxQueued(filePath: string): void {
@@ -47,6 +109,7 @@ export function markRemuxQueued(filePath: string): void {
     percent: 0,
     updatedAt: Date.now(),
   });
+  scheduleSave(300);
 }
 
 export function isRemuxActive(filePath: string): boolean {
@@ -63,6 +126,7 @@ export function updateRemuxPercent(
   if (percent <= entry.percent) return;
   entry.percent = Math.min(100, Math.max(0, Math.round(percent)));
   entry.updatedAt = Date.now();
+  scheduleSave(800);
 }
 
 export function finishRemux(
@@ -80,13 +144,14 @@ export function finishRemux(
       error: outcome.error,
       updatedAt: Date.now(),
     });
-    return;
+  } else {
+    entries.set(key, {
+      status: outcome.skipped ? "skipped" : "done",
+      percent: 100,
+      updatedAt: Date.now(),
+    });
   }
-  entries.set(key, {
-    status: outcome.skipped ? "skipped" : "done",
-    percent: 100,
-    updatedAt: Date.now(),
-  });
+  flushSave();
 }
 
 export interface RemuxLogEntry extends RemuxProgressEntry {
@@ -95,9 +160,8 @@ export interface RemuxLogEntry extends RemuxProgressEntry {
   updatedAt: string;
 }
 
-/** All tracked remux entries (pruned), newest activity first. */
+/** All tracked remux entries, newest activity first. */
 export function listRemuxEntries(): RemuxLogEntry[] {
-  prune();
   return [...entries.entries()]
     .sort((a, b) => b[1].updatedAt - a[1].updatedAt)
     .map(([key, entry]) => ({
@@ -107,14 +171,12 @@ export function listRemuxEntries(): RemuxLogEntry[] {
       percent: entry.percent,
       ...(entry.error ? { error: entry.error } : {}),
       updatedAt: new Date(entry.updatedAt).toISOString(),
-    }))
-    .sort((a, b) => b.updatedAt.localeCompare(a.updatedAt));
+    }));
 }
 
 export function getRemuxProgress(
   files: string[],
 ): Record<string, RemuxProgressEntry> {
-  prune();
   const out: Record<string, RemuxProgressEntry> = {};
   for (const file of files) {
     const entry = entries.get(keyOf(file));
