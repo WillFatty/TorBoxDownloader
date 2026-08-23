@@ -54,6 +54,10 @@ export interface AppSettings {
   moviesPath: string;
   /** Absolute path to Jellyfin TV-Shows library folder */
   tvShowsPath: string;
+  /** Base URL of the Jellyfin server, e.g. http://jellyfin.local:8096 */
+  jellyfinUrl: string;
+  /** Jellyfin API token (Dashboard → API Keys) */
+  jellyfinApiKey: string;
 }
 
 export type DownloadStatus =

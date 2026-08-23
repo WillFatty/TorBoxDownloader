@@ -23,6 +23,8 @@ const defaults = (): AppSettings => ({
     (process.env.DOWNLOAD_PATH?.trim()
       ? path.join(process.env.DOWNLOAD_PATH.trim(), "TV-Shows")
       : path.join(path.sep, "raid", "Jellyfin", "TV-Shows")),
+  jellyfinUrl: (process.env.JELLYFIN_URL?.trim() || "").replace(/\/$/, ""),
+  jellyfinApiKey: process.env.JELLYFIN_API_KEY?.trim() ?? "",
 });
 
 async function ensureDataDir() {
@@ -98,6 +100,11 @@ export async function getSettings(): Promise<AppSettings> {
       cometUrl: (saved.cometUrl?.trim() || base.cometUrl).replace(/\/$/, ""),
       moviesPath: paths.moviesPath,
       tvShowsPath: paths.tvShowsPath,
+      jellyfinUrl: (saved.jellyfinUrl?.trim() || base.jellyfinUrl).replace(
+        /\/$/,
+        "",
+      ),
+      jellyfinApiKey: saved.jellyfinApiKey?.trim() || base.jellyfinApiKey,
     };
   } catch {
     return base;
@@ -125,6 +132,14 @@ export async function saveSettings(
       partial.tvShowsPath !== undefined
         ? partial.tvShowsPath.trim()
         : current.tvShowsPath,
+    jellyfinUrl:
+      partial.jellyfinUrl !== undefined
+        ? partial.jellyfinUrl.trim().replace(/\/$/, "")
+        : current.jellyfinUrl,
+    jellyfinApiKey:
+      partial.jellyfinApiKey !== undefined
+        ? partial.jellyfinApiKey.trim()
+        : current.jellyfinApiKey,
   };
   await ensureDataDir();
   await fs.writeFile(SETTINGS_FILE, JSON.stringify(next, null, 2), "utf8");
@@ -140,11 +155,16 @@ export function libraryRootFor(
 
 export function maskSettings(settings: AppSettings) {
   const key = settings.torboxApiKey;
+  const jfKey = settings.jellyfinApiKey;
   return {
     ...settings,
     torboxApiKey: key
       ? `${key.slice(0, 4)}${"•".repeat(Math.max(0, key.length - 8))}${key.slice(-4)}`
       : "",
     hasTorboxApiKey: Boolean(key),
+    jellyfinApiKey: jfKey
+      ? `${jfKey.slice(0, 4)}${"•".repeat(Math.max(0, jfKey.length - 8))}${jfKey.slice(-4)}`
+      : "",
+    hasJellyfinApiKey: Boolean(jfKey),
   };
 }

@@ -2225,6 +2225,82 @@ body {
   line-height: 1.85;
 }
 
+.page-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.5rem;
+}
+
+.jf-card {
+  display: flex;
+  flex-direction: column;
+  gap: 0.6rem;
+  margin-bottom: 1.25rem;
+  border: 1px solid var(--line);
+  border-radius: var(--radius);
+  background: color-mix(in srgb, var(--bg-elevated) 50%, transparent);
+  padding: 0.85rem 1rem;
+}
+
+.jf-card.is-ok {
+  border-color: color-mix(in srgb, var(--accent) 30%, var(--line));
+}
+
+.jf-card.is-warn {
+  border-color: color-mix(in srgb, var(--warn) 40%, var(--line));
+}
+
+.jf-card-head {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  font-size: 0.8rem;
+}
+
+.jf-card-head strong {
+  font-weight: 650;
+  letter-spacing: 0.02em;
+  color: var(--ink);
+}
+
+.jf-card-time {
+  margin-left: auto;
+  font-size: 0.72rem;
+  color: var(--muted);
+  font-variant-numeric: tabular-nums;
+}
+
+.jf-card-summary {
+  margin: 0;
+  font-size: 0.82rem;
+  line-height: 1.5;
+  color: var(--ink-soft);
+}
+
+.jf-card.is-warn .status-dot {
+  background: var(--warn);
+}
+
+.jf-missing {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.4rem;
+  max-height: 11rem;
+  overflow-y: auto;
+  overscroll-behavior: contain;
+}
+
+.jf-missing .meta-tag b {
+  margin-right: 0.35rem;
+  color: var(--warn);
+}
+
+.jf-card-hint {
+  margin: 0;
+  font-size: 0.72rem;
+  color: var(--muted);
+}
+
 /* —— Home —— */
 .home-inner {
   display: flex;

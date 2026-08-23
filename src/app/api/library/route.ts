@@ -56,6 +56,9 @@ export async function GET(request: Request) {
         root: library.root,
         moviesPath: settings.moviesPath,
         tvShowsPath: settings.tvShowsPath,
+        jellyfinConfigured: Boolean(
+          settings.jellyfinUrl.trim() && settings.jellyfinApiKey.trim(),
+        ),
         scannedAt: library.scannedAt,
         movies: library.movies.map((m) => ({
           name: m.name,

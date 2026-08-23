@@ -274,6 +274,20 @@ class DownloadManager {
     return this.jobs.get(id)?.status === "cancelled";
   }
 
+  /** True when destPath already holds a complete file of expectedSize bytes. */
+  private async alreadySaved(
+    destPath: string,
+    expectedSize: number,
+  ): Promise<boolean> {
+    if (!expectedSize) return false;
+    try {
+      const st = await fs.stat(destPath);
+      return st.isFile() && st.size === expectedSize;
+    } catch {
+      return false;
+    }
+  }
+
   private async run(jobId: string, fileIdx: number | null) {
     if (this.running.has(jobId)) return;
     this.running.add(jobId);
@@ -386,15 +400,37 @@ class DownloadManager {
       });
 
       if (this.isCancelled(jobId)) return;
-      const link = await requestDownloadLink(
-        settings.torboxApiKey,
-        created.torrent_id,
-        file.id,
-      );
-      if (this.isCancelled(jobId)) return;
+      if (await this.alreadySaved(destPath, file.size)) {
+        this.patch(jobId, {
+          status: "completed",
+          progress: 100,
+          bytesDownloaded: file.size,
+          savedFiles: [destPath],
+        });
+        return;
+      }
 
-      this.patch(jobId, { status: "saving", progress: 75 });
-      await this.saveFile(jobId, link, destPath, file.size, 75, 99);
+      let lastSaveError: unknown = null;
+      let savedOk = false;
+      for (let attempt = 1; attempt <= 3 && !savedOk; attempt++) {
+        try {
+          const link = await requestDownloadLink(
+            settings.torboxApiKey,
+            created.torrent_id,
+            file.id,
+          );
+          if (this.isCancelled(jobId)) return;
+
+          this.patch(jobId, { status: "saving", progress: 75 });
+          await this.saveFile(jobId, link, destPath, file.size, 75, 99);
+          savedOk = true;
+        } catch (err) {
+          if (this.isCancelled(jobId)) return;
+          lastSaveError = err;
+          if (attempt < 3) await sleep(1500 * attempt);
+        }
+      }
+      if (!savedOk) throw lastSaveError;
 
       this.patch(jobId, {
         status: "completed",
@@ -449,7 +485,8 @@ class DownloadManager {
       if (!titles.has(key)) titles.set(key, job.episodeTitle);
     }
     const saved: string[] = [];
-    let downloadedBytes = 0;
+    const failures: { label: string; message: string }[] = [];
+    let cumulativeBytes = 0;
 
     for (let i = 0; i < episodes.length; i++) {
       if (this.isCancelled(jobId)) return;
@@ -467,29 +504,82 @@ class DownloadManager {
         useAutoName: true,
       });
       const dest = path.join(tvShowsRoot, jelly.relativePath);
-
-      this.patch(jobId, {
-        status: "fetching_link",
-        torboxFileId: ep.file.id,
-        fileName: jelly.fileName,
-        downloadPath: dest,
-        season: ep.season,
-        episode: ep.episode,
-      });
-
-      const link = await requestDownloadLink(apiKey, torrentId, ep.file.id);
-      if (this.isCancelled(jobId)) return;
       const startPct = 70 + Math.round((i / episodes.length) * 28);
       const endPct = 70 + Math.round(((i + 1) / episodes.length) * 28);
 
-      this.patch(jobId, { status: "saving", progress: startPct });
-      await this.saveFile(jobId, link, dest, ep.file.size, startPct, endPct);
+      // Resume support: skip episodes already complete on disk
+      if (await this.alreadySaved(dest, ep.file.size)) {
+        saved.push(dest);
+        cumulativeBytes += ep.file.size || 0;
+        this.patch(jobId, {
+          torboxFileId: ep.file.id,
+          fileName: jelly.fileName,
+          downloadPath: dest,
+          season: ep.season,
+          episode: ep.episode,
+          savedFiles: [...saved],
+          bytesDownloaded: cumulativeBytes,
+          progress: endPct,
+          packSummary: `${summary} · saved ${saved.length}/${episodes.length}`,
+        });
+        continue;
+      }
 
-      downloadedBytes += ep.file.size;
+      let lastError: unknown = null;
+      let ok = false;
+      for (let attempt = 1; attempt <= 3 && !ok; attempt++) {
+        if (this.isCancelled(jobId)) return;
+        try {
+          this.patch(jobId, {
+            status: "fetching_link",
+            torboxFileId: ep.file.id,
+            fileName: jelly.fileName,
+            downloadPath: dest,
+            season: ep.season,
+            episode: ep.episode,
+          });
+
+          const link = await requestDownloadLink(apiKey, torrentId, ep.file.id);
+          if (this.isCancelled(jobId)) return;
+
+          this.patch(jobId, { status: "saving", progress: startPct });
+          await this.saveFile(
+            jobId,
+            link,
+            dest,
+            ep.file.size,
+            startPct,
+            endPct,
+            { offset: cumulativeBytes, total: totalBytes },
+          );
+          ok = true;
+        } catch (err) {
+          if (this.isCancelled(jobId)) return;
+          lastError = err;
+          if (attempt < 3) await sleep(1500 * attempt);
+        }
+      }
+
+      if (!ok) {
+        failures.push({
+          label: `S${String(ep.season).padStart(2, "0")}E${String(ep.episode).padStart(2, "0")}`,
+          message:
+            lastError instanceof Error
+              ? lastError.message
+              : String(lastError ?? "Unknown error"),
+        });
+        this.patch(jobId, {
+          progress: endPct,
+          packSummary: `${summary} · saved ${saved.length}/${episodes.length}`,
+        });
+        continue;
+      }
+
       saved.push(dest);
+      cumulativeBytes += ep.file.size || 0;
       this.patch(jobId, {
         savedFiles: [...saved],
-        bytesDownloaded: downloadedBytes,
+        bytesDownloaded: cumulativeBytes,
         progress: endPct,
         packSummary: `${summary} · saved ${saved.length}/${episodes.length}`,
       });
@@ -498,13 +588,33 @@ class DownloadManager {
       if (i < episodes.length - 1) await sleep(750);
     }
 
+    if (failures.length > 0) {
+      const list = failures
+        .slice(0, 6)
+        .map((f) => f.label)
+        .join(", ");
+      const more = failures.length > 6 ? ` +${failures.length - 6} more` : "";
+      this.patch(jobId, {
+        status: "failed",
+        speedBytesPerSec: 0,
+        savedFiles: saved,
+        bytesTotal: totalBytes,
+        bytesDownloaded: cumulativeBytes,
+        error: `Saved ${saved.length}/${episodes.length} episodes — ${failures.length} failed (${list}${more}). Retry will skip already-saved episodes.`,
+      });
+      return;
+    }
+
     this.patch(jobId, {
       status: "completed",
       progress: 100,
       savedFiles: saved,
+      bytesDownloaded: cumulativeBytes,
+      bytesTotal: totalBytes,
       packSummary: `Saved ${saved.length} episodes (${summary})`,
       fileName: `${job.mediaName} — ${saved.length} episodes`,
       downloadPath: path.join(tvShowsRoot, job.mediaName),
+      error: null,
     });
     this.titleMaps.delete(jobId);
   }
@@ -573,6 +683,7 @@ class DownloadManager {
     expectedSize: number,
     progressStart = 75,
     progressEnd = 99,
+    bytes?: { offset: number; total: number },
   ) {
     await fs.mkdir(path.dirname(destPath), { recursive: true });
     const tmp = `${destPath}.part`;
@@ -580,7 +691,14 @@ class DownloadManager {
 
     const res = await fetch(url, { signal });
     if (!res.ok || !res.body) {
-      throw new Error(`File download failed (${res.status})`);
+      let detail = "";
+      try {
+        const text = await res.text();
+        detail = text.replace(/\s+/g, " ").trim().slice(0, 300);
+      } catch {}
+      throw new Error(
+        `File download failed (${res.status})${detail ? `: ${detail}` : ""}`,
+      );
     }
 
     const total = Number(res.headers.get("content-length")) || expectedSize || 0;
@@ -622,8 +740,8 @@ class DownloadManager {
                 ? progressStart + Math.round((downloaded / total) * span)
                 : progressStart;
             self.patch(jobId, {
-              bytesDownloaded: downloaded,
-              bytesTotal: total || job.bytesTotal,
+              bytesDownloaded: (bytes?.offset ?? 0) + downloaded,
+              bytesTotal: bytes ? bytes.total : total || job.bytesTotal,
               progress: Math.min(progressEnd, pct),
               speedBytesPerSec: Math.round(speed),
             });

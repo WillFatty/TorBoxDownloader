@@ -47,6 +47,68 @@ function OpenArrow() {
   );
 }
 
+interface JellyfinCheck {
+  checkedAt: string;
+  totalItems: number;
+  indexedItems: number;
+  scanTriggered: boolean;
+  scanError: string | null;
+  summary: string;
+  missingTotal: number;
+  missing: Array<{ type: "movie" | "series"; name: string; year: string | null }>;
+}
+
+function JellyfinCard({
+  result,
+  busy,
+}: {
+  result: JellyfinCheck | null;
+  busy: boolean;
+}) {
+  if (!result) return null;
+  const missing = result.missingTotal > 0;
+
+  return (
+    <div className={`jf-card${missing ? " is-warn" : " is-ok"}`}>
+      <div className="jf-card-head">
+        <span
+          className={`status-dot${busy ? " is-pulsing" : ""}`}
+          aria-hidden="true"
+        />
+        <strong>Jellyfin metadata</strong>
+        <span className="jf-card-time">
+          {new Date(result.checkedAt).toLocaleTimeString()} ·{" "}
+          {result.indexedItems}/{result.totalItems} indexed
+        </span>
+      </div>
+
+      <p className="jf-card-summary">{result.summary}</p>
+      {result.scanError && <p className="log-error">{result.scanError}</p>}
+
+      {missing && (
+        <>
+          <div className="jf-missing">
+            {result.missing.map((m) => (
+              <span key={`${m.type}-${m.name}`} className="meta-tag">
+                <b>{m.type === "movie" ? "Movie" : "TV"}</b>
+                {m.name}
+                {m.year ? ` (${m.year})` : ""}
+              </span>
+            ))}
+            {result.missingTotal > result.missing.length && (
+              <span className="meta-tag">+{result.missingTotal - result.missing.length} more</span>
+            )}
+          </div>
+          <p className="jf-card-hint">
+            Jellyfin is rescanning — give it a couple of minutes, then run the
+            check again.
+          </p>
+        </>
+      )}
+    </div>
+  );
+}
+
 export function LibraryPage() {
   const [tab, setTab] = useState<"movies" | "shows">("movies");
   const [q, setQ] = useState("");
@@ -60,6 +122,9 @@ export function LibraryPage() {
   const [art, setArt] = useState<Record<string, ArtworkEntry>>({});
   const [brokenArt, setBrokenArt] = useState<Record<string, true>>({});
   const [issuesOnly, setIssuesOnly] = useState(false);
+  const [jfBusy, setJfBusy] = useState(false);
+  const [jfResult, setJfResult] = useState<JellyfinCheck | null>(null);
+  const [jfConfigured, setJfConfigured] = useState(true);
 
   function posterFor(key: string): string | null {
     return brokenArt[key] ? null : art[key]?.poster ?? null;
@@ -79,6 +144,7 @@ export function LibraryPage() {
           shows?: LibShow[];
           root?: string;
           scannedAt?: string;
+          jellyfinConfigured?: boolean;
         };
       }>(res);
       if (!res.ok) throw new Error(data.error || "Scan failed");
@@ -87,6 +153,7 @@ export function LibraryPage() {
       setShows(library.shows || []);
       setRoot(library.root || "");
       setScannedAt(library.scannedAt || "");
+      setJfConfigured(library.jellyfinConfigured !== false);
       return {
         movies: library.movies || [],
         shows: library.shows || [],
@@ -102,6 +169,21 @@ export function LibraryPage() {
     setError(null);
     await reloadLibrary(force);
     setLoading(false);
+  }
+
+  async function refreshMetadata() {
+    setJfBusy(true);
+    setJfResult(null);
+    try {
+      const res = await fetch("/api/jellyfin/metadata", { method: "POST" });
+      const data = await readJson<JellyfinCheck & { error?: string }>(res);
+      if (!res.ok) throw new Error(data.error || "Jellyfin check failed");
+      setJfResult(data);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Jellyfin check failed");
+    } finally {
+      setJfBusy(false);
+    }
   }
 
   async function handleNamingFixed(
@@ -254,15 +336,29 @@ export function LibraryPage() {
             </p>
           )}
         </div>
-        <button
-          type="button"
-          className="btn-secondary"
-          disabled={loading}
-          onClick={() => void load(true)}
-        >
-          {loading ? "Scanning…" : "Rescan"}
-        </button>
+        <div className="page-actions">
+          {jfConfigured && (
+            <button
+              type="button"
+              className="btn-secondary"
+              disabled={jfBusy || loading}
+              onClick={() => void refreshMetadata()}
+            >
+              {jfBusy ? "Checking…" : "Refresh metadata"}
+            </button>
+          )}
+          <button
+            type="button"
+            className="btn-secondary"
+            disabled={loading}
+            onClick={() => void load(true)}
+          >
+            {loading ? "Scanning…" : "Rescan"}
+          </button>
+        </div>
       </div>
+
+      <JellyfinCard result={jfResult} busy={jfBusy} />
 
       <div className="lib-stats">
         <div className="lib-stat">

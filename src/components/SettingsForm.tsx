@@ -8,7 +8,9 @@ interface SettingsView {
   cometUrl: string;
   moviesPath: string;
   tvShowsPath: string;
+  jellyfinUrl: string;
   hasTorboxApiKey: boolean;
+  hasJellyfinApiKey: boolean;
 }
 
 export function SettingsForm() {
@@ -17,8 +19,11 @@ export function SettingsForm() {
     cometUrl: "",
     moviesPath: "",
     tvShowsPath: "",
+    jellyfinUrl: "",
+    jellyfinApiKey: "",
   });
   const [hasKey, setHasKey] = useState(false);
+  const [hasJfKey, setHasJfKey] = useState(false);
   const [msg, setMsg] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
@@ -36,8 +41,11 @@ export function SettingsForm() {
         cometUrl: s.cometUrl || "",
         moviesPath: s.moviesPath || "",
         tvShowsPath: s.tvShowsPath || "",
+        jellyfinUrl: s.jellyfinUrl || "",
+        jellyfinApiKey: "",
       });
       setHasKey(s.hasTorboxApiKey);
+      setHasJfKey(s.hasJellyfinApiKey);
       setLoading(false);
     })();
   }, []);
@@ -54,8 +62,12 @@ export function SettingsForm() {
           cometUrl: form.cometUrl,
           moviesPath: form.moviesPath,
           tvShowsPath: form.tvShowsPath,
+          jellyfinUrl: form.jellyfinUrl,
           ...(form.torboxApiKey.trim()
             ? { torboxApiKey: form.torboxApiKey.trim() }
+            : {}),
+          ...(form.jellyfinApiKey.trim()
+            ? { jellyfinApiKey: form.jellyfinApiKey.trim() }
             : {}),
         }),
       });
@@ -68,11 +80,14 @@ export function SettingsForm() {
       }
       const saved = data.settings;
       setHasKey(saved.hasTorboxApiKey);
+      setHasJfKey(saved.hasJellyfinApiKey);
       setForm((f) => ({
         ...f,
         torboxApiKey: "",
+        jellyfinApiKey: "",
         moviesPath: saved.moviesPath,
         tvShowsPath: saved.tvShowsPath,
+        jellyfinUrl: saved.jellyfinUrl || "",
       }));
       setMsg("Saved.");
     } catch (err) {
@@ -168,6 +183,44 @@ export function SettingsForm() {
           />
           <span className="block text-xs text-[var(--muted)]">
             Saves as <code>Show/Season 1/Show - S01E01 - Title.mkv</code>
+          </span>
+        </label>
+
+        <label className="block space-y-2">
+          <span className="text-xs font-semibold uppercase tracking-wider text-[var(--muted)]">
+            Jellyfin server URL
+          </span>
+          <input
+            className="field w-full"
+            value={form.jellyfinUrl}
+            onChange={(e) =>
+              setForm((f) => ({ ...f, jellyfinUrl: e.target.value }))
+            }
+            placeholder="http://jellyfin.local:8096"
+          />
+        </label>
+
+        <label className="block space-y-2">
+          <span className="text-xs font-semibold uppercase tracking-wider text-[var(--muted)]">
+            Jellyfin API key{" "}
+            {hasJfKey && (
+              <span className="normal-case tracking-normal text-[var(--accent)]">
+                (saved — leave blank to keep)
+              </span>
+            )}
+          </span>
+          <input
+            type="password"
+            className="field w-full"
+            value={form.jellyfinApiKey}
+            onChange={(e) =>
+              setForm((f) => ({ ...f, jellyfinApiKey: e.target.value }))
+            }
+            placeholder={hasJfKey ? "••••••••" : "Dashboard → API Keys"}
+            autoComplete="off"
+          />
+          <span className="block text-xs text-[var(--muted)]">
+            Used by the Library&apos;s &quot;Refresh metadata&quot; check.
           </span>
         </label>
 
