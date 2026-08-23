@@ -205,9 +205,23 @@ export function SearchWorkspace() {
     }
   }, [filteredStreams, picked]);
 
+  function looksLikeMagnet(value: string): boolean {
+    const t = value.trim();
+    return (
+      /^magnet:\?/i.test(t) ||
+      /^[a-fA-F0-9]{40}$/.test(t) ||
+      /^[a-zA-Z2-7]{32}$/.test(t)
+    );
+  }
+
   async function runSearch(e?: React.FormEvent) {
     e?.preventDefault();
-    if (!query.trim()) return;
+    const q = query.trim();
+    if (!q) return;
+    if (looksLikeMagnet(q)) {
+      await handleMagnet(q);
+      return;
+    }
     setSearching(true);
     setSearchError(null);
     setSelected(null);
@@ -215,7 +229,7 @@ export function SearchWorkspace() {
     setStreams([]);
     setPicked(null);
     try {
-      const params = new URLSearchParams({ q: query.trim() });
+      const params = new URLSearchParams({ q });
       if (typeFilter !== "all") params.set("type", typeFilter);
       const res = await fetch(`/api/search?${params}`);
       const data = await readJson<{
@@ -232,7 +246,87 @@ export function SearchWorkspace() {
     }
   }
 
-  async function selectTitle(item: SearchResult) {
+  async function handleMagnet(raw: string) {
+    setSearching(true);
+    setSearchError(null);
+    setSelected(null);
+    setMeta(null);
+    setStreams([]);
+    setPicked(null);
+    try {
+      const res = await fetch("/api/magnet", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ magnet: raw }),
+      });
+      const data = await readJson<{
+        error?: string;
+        infoHash?: string;
+        displayName?: string | null;
+        cleanTitle?: string;
+        quality?: string;
+        packLabel?: string | null;
+        season?: number | null;
+        episode?: number | null;
+        match?: {
+          type: MediaType;
+          imdbId: string;
+          name: string;
+          year: string;
+          poster: string | null;
+        } | null;
+      }>(res);
+      if (!res.ok || !data.infoHash || !data.match) {
+        throw new Error(data.error || "Couldn't process that magnet");
+      }
+      const match = data.match;
+      const item: SearchResult = {
+        id: match.imdbId,
+        imdbId: match.imdbId,
+        type: match.type,
+        name: match.name,
+        year: match.year,
+        poster: match.poster,
+      };
+      const presetStream: StreamResult = {
+        infoHash: data.infoHash,
+        title: data.displayName || data.cleanTitle || item.name,
+        name: "Magnet",
+        quality: data.quality || "Unknown",
+        size: null,
+        sizeBytes: null,
+        seeds: null,
+        fileIdx: null,
+        filename: null,
+        cached: null,
+        url: null,
+        packHint: data.packLabel ?? null,
+      };
+      setQuery(item.name);
+      setResults([item]);
+      await selectTitle(item, {
+        presetStream,
+        season: data.season,
+        episode: data.episode,
+      });
+    } catch (err) {
+      setSearchError(
+        err instanceof Error ? err.message : "Magnet lookup failed",
+      );
+      setResults([]);
+    } finally {
+      setSearching(false);
+    }
+  }
+
+  async function selectTitle(
+    item: SearchResult,
+    opts?: {
+      presetStream?: StreamResult;
+      season?: number | null;
+      episode?: number | null;
+    },
+  ) {
     setSelected(item);
     setPicked(null);
     setStreams([]);
@@ -253,12 +347,29 @@ export function SearchWorkspace() {
     if (res.ok) {
       setMeta(data.meta ?? null);
       if (item.type === "series" && data.meta?.videos?.length) {
-        const first = data.meta.videos[0];
-        setSeason(first.season);
-        setEpisode(first.episode);
+        const videos = data.meta.videos;
+        const seasonList = [...new Set(videos.map((v) => v.season))];
+        const wantedSeason =
+          opts?.season != null && seasonList.includes(opts.season)
+            ? opts.season
+            : videos[0].season;
+        setSeason(wantedSeason);
+        const epsInSeason = videos
+          .filter((v) => v.season === wantedSeason)
+          .map((v) => v.episode);
+        const wantedEpisode =
+          opts?.episode != null && epsInSeason.includes(opts.episode)
+            ? opts.episode
+            : (epsInSeason[0] ?? 1);
+        setEpisode(wantedEpisode);
       }
     } else {
       setMeta(null);
+    }
+
+    if (opts?.presetStream) {
+      setStreams([opts.presetStream]);
+      return;
     }
 
     if (item.type === "movie") {
@@ -526,7 +637,7 @@ export function SearchWorkspace() {
                 <input
                   value={query}
                   onChange={(e) => setQuery(e.target.value)}
-                  placeholder="Ant Man, Breaking Bad…"
+                  placeholder="Ant Man, Breaking Bad… or paste a magnet link"
                   className="field"
                 />
                 <button type="submit" className="btn-primary" disabled={searching}>
