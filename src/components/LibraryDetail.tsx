@@ -444,11 +444,13 @@ export function LibraryDetail({
   art,
   onClose,
   onFixed,
+  jellyfinConfigured = false,
 }: {
   selection: LibSelection;
   art: ArtworkEntry | undefined;
   onClose: () => void;
   onFixed: (oldFolder: string, result: { newFolder: string }) => void;
+  jellyfinConfigured?: boolean;
 }) {
   const [meta, setMeta] = useState<MediaMeta | null>(null);
   const [season, setSeason] = useState<number | null>(null);
@@ -457,6 +459,9 @@ export function LibraryDetail({
   const [enStatus, setEnStatus] = useState<string | null>(null);
   const [enError, setEnError] = useState<string | null>(null);
   const [remux, setRemux] = useState<RemuxSession | null>(null);
+  const [jfBusy, setJfBusy] = useState(false);
+  const [jfStatus, setJfStatus] = useState<string | null>(null);
+  const [jfError, setJfError] = useState<string | null>(null);
   const remuxPollRef = useRef<(() => void) | null>(null);
 
   const isShow = selection.kind === "show";
@@ -800,6 +805,30 @@ export function LibraryDetail({
     }
   }
 
+  async function refreshJfMetadata() {
+    if (!probeFiles.length) return;
+    setJfBusy(true);
+    setJfStatus(null);
+    setJfError(null);
+    try {
+      const res = await fetch("/api/jellyfin/refresh", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          type: isShow ? "series" : "movie",
+          paths: probeFiles,
+        }),
+      });
+      const data = await readJson<{ ok?: boolean; error?: string }>(res);
+      if (!res.ok) throw new Error(data.error || "Metadata refresh failed");
+      setJfStatus("Metadata refresh requested — Jellyfin is updating this item.");
+    } catch (err) {
+      setJfError(err instanceof Error ? err.message : "Metadata refresh failed");
+    } finally {
+      setJfBusy(false);
+    }
+  }
+
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
       if (e.key !== "Escape") return;
@@ -943,6 +972,31 @@ export function LibraryDetail({
             </div>
 
             <div className="lib-modal-body">
+              {jellyfinConfigured && (
+                <>
+                  <div className="lib-season-bar">
+                    <button
+                      type="button"
+                      className="btn-secondary lib-en-btn-season"
+                      disabled={jfBusy || !probeFiles.length}
+                      title="Ask Jellyfin to re-read metadata and images for this item only"
+                      onClick={() => void refreshJfMetadata()}
+                    >
+                      {jfBusy ? "Refreshing…" : "Refresh metadata in Jellyfin"}
+                    </button>
+                  </div>
+                  {(jfStatus || jfError) && (
+                    <p
+                      className={
+                        jfError ? "lib-naming-error" : "lib-en-status"
+                      }
+                    >
+                      {jfError || jfStatus}
+                    </p>
+                  )}
+                </>
+              )}
+
               {meta?.genres?.length ? (
                 <div className="lib-genres">
                   {meta.genres.slice(0, 5).map((genre) => (

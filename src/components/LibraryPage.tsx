@@ -560,6 +560,7 @@ export function LibraryPage() {
       {selection && (
         <LibraryDetail
           selection={selection}
+          jellyfinConfigured={jfConfigured}
           art={
             art[
               selection.kind === "movie"
