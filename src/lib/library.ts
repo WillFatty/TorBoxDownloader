@@ -4,6 +4,13 @@ import { getSettings } from "./settings";
 import { parseEpisodeFromName } from "./episodes";
 
 const VIDEO_EXT = /\.(mkv|mp4|avi|m4v|ts|mov)$/i;
+const TEMP_SUFFIX = /\.(part|tb-bak|tmp)$/i;
+
+export function isVideoFileName(name: string): boolean {
+  if (name.startsWith(".")) return false;
+  if (TEMP_SUFFIX.test(name)) return false;
+  return VIDEO_EXT.test(name);
+}
 
 export interface LibraryMovie {
   name: string;
@@ -53,7 +60,7 @@ async function listVideoFiles(dir: string): Promise<string[]> {
   try {
     const entries = await fs.readdir(dir, { withFileTypes: true });
     return entries
-      .filter((e) => e.isFile() && VIDEO_EXT.test(e.name))
+      .filter((e) => e.isFile() && isVideoFileName(e.name))
       .map((e) => e.name);
   } catch {
     return [];
@@ -109,7 +116,39 @@ async function scanShow(showRoot: string, showName: string): Promise<LibraryShow
   };
 }
 
-export async function scanLibrary(): Promise<LibraryIndex> {
+const SCAN_CACHE_FILE = path.join(process.cwd(), "data", "library-cache.json");
+const SCAN_FRESH_MS = 30_000;
+
+let cachedIndex: LibraryIndex | null = null;
+let cacheLoaded = false;
+let refreshing: Promise<void> | null = null;
+
+async function loadScanCache(): Promise<void> {
+  if (cacheLoaded) return;
+  cacheLoaded = true;
+  try {
+    const raw = await fs.readFile(SCAN_CACHE_FILE, "utf8");
+    const parsed = JSON.parse(raw) as LibraryIndex | null;
+    if (
+      parsed &&
+      Array.isArray(parsed.movies) &&
+      Array.isArray(parsed.shows)
+    ) {
+      cachedIndex = parsed;
+    }
+  } catch {
+    cachedIndex = null;
+  }
+}
+
+function saveScanCache(): void {
+  if (!cachedIndex) return;
+  void fs
+    .writeFile(SCAN_CACHE_FILE, JSON.stringify(cachedIndex), "utf8")
+    .catch(() => undefined);
+}
+
+async function performScan(): Promise<LibraryIndex> {
   const settings = await getSettings();
   const moviesRoot = settings.moviesPath;
   const showsRoot = settings.tvShowsPath;
@@ -135,6 +174,37 @@ export async function scanLibrary(): Promise<LibraryIndex> {
     shows,
     scannedAt: new Date().toISOString(),
   };
+}
+
+export async function scanLibrary(
+  options?: { force?: boolean },
+): Promise<LibraryIndex> {
+  await loadScanCache();
+  const force = options?.force === true;
+
+  if (!cachedIndex || force) {
+    cachedIndex = await performScan();
+    saveScanCache();
+    return cachedIndex;
+  }
+
+  // Serve the last known index immediately and refresh in the background so
+  // opening the library never waits on a full disk walk (e.g. while remuxing
+  // saturates I/O).
+  const age = Date.now() - Date.parse(cachedIndex.scannedAt);
+  if (age > SCAN_FRESH_MS && !refreshing) {
+    refreshing = performScan()
+      .then((index) => {
+        cachedIndex = index;
+        saveScanCache();
+      })
+      .catch(() => undefined)
+      .finally(() => {
+        refreshing = null;
+      });
+  }
+
+  return cachedIndex;
 }
 
 export function normalizeTitle(s: string): string {

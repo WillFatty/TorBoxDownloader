@@ -9,8 +9,14 @@ const tasks: QueuedTask[] = [];
 
 // Each remux is `-c copy` (I/O-bound), so parallelism comes from running
 // several ffmpeg processes at once rather than threads within one process.
-// Capped to avoid disk thrash on large batches.
-const MAX_CONCURRENT_REMUXES = Math.min(4, Math.max(1, availableParallelism()));
+// Default is deliberately low: every extra parallel copy starves the rest of
+// the system (library scans, ffprobe, playback) of disk I/O. Override with
+// REMUX_CONCURRENCY on fast storage.
+const envConcurrency = Number(process.env.REMUX_CONCURRENCY);
+const MAX_CONCURRENT_REMUXES =
+  Number.isFinite(envConcurrency) && envConcurrency >= 1
+    ? Math.floor(envConcurrency)
+    : Math.min(2, Math.max(1, availableParallelism()));
 let running = 0;
 
 function pump() {

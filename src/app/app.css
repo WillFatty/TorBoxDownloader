@@ -1565,6 +1565,14 @@ body {
   color: var(--warn, #f59e0b);
 }
 
+.lib-detail-tag.is-remuxing {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.3rem;
+  border-color: color-mix(in srgb, var(--info) 40%, var(--line));
+  color: var(--info);
+}
+
 .lib-season-bar {
   display: flex;
   flex-wrap: wrap;

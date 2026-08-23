@@ -4,6 +4,7 @@ import { promises as fs } from "fs";
 import path from "path";
 import { promisify } from "util";
 import { getSettings, libraryRootFor } from "./settings";
+import { isRemuxActive } from "./remux-progress";
 
 const execFileAsync = promisify(execFile);
 const nodeRequire = createRequire(path.join(process.cwd(), "package.json"));
@@ -201,6 +202,16 @@ export async function probeMediaLanguages(
     Date.now() - hit.at < CACHE_TTL_MS
   ) {
     return { audio: hit.audio, subtitles: hit.subtitles };
+  }
+
+  // A file being remuxed is off-limits: skip ffprobe rather than fight the
+  // ffmpeg processes for disk I/O. Cached languages stay usable; otherwise
+  // report none — the modal shows the file as "Remuxing" anyway.
+  if (isRemuxActive(resolved)) {
+    if (hit) {
+      return { audio: hit.audio, subtitles: hit.subtitles };
+    }
+    return { audio: [], subtitles: [] };
   }
 
   const langs = await runFfprobe(resolved);

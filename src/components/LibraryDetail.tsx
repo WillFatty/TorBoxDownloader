@@ -1,8 +1,9 @@
 "use client";
 
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { createPortal } from "react-dom";
 import type { MediaMeta } from "@/lib/types";
+import type { RemuxLogEntry } from "@/lib/remux-progress";
 import {
   hueStyle,
   readJson,
@@ -69,12 +70,14 @@ function LangTags({
   onEnglishOnly,
   onEnglishSubs,
   busy,
+  remuxing,
 }: {
   langs: MediaLanguages | undefined;
   resolution: string | null;
   onEnglishOnly?: () => void;
   onEnglishSubs?: () => void;
   busy?: boolean;
+  remuxing?: number | null;
 }) {
   const audio = langs?.audio || [];
   const subs = langs?.subtitles || [];
@@ -87,7 +90,8 @@ function LangTags({
     !audio.length &&
     !subs.length &&
     !showEn &&
-    !showSubs
+    !showSubs &&
+    remuxing == null
   ) {
     return null;
   }
@@ -113,33 +117,45 @@ function LangTags({
           {lang.code.toUpperCase()} sub
         </span>
       ))}
-      {showEn && (
-        <button
-          type="button"
-          className="btn-secondary lib-en-btn"
-          disabled={busy}
-          title="Remux file to keep English audio and subtitles only"
-          onClick={(e) => {
-            e.stopPropagation();
-            onEnglishOnly?.();
-          }}
+      {remuxing != null ? (
+        <span
+          className="lib-detail-tag is-remuxing"
+          title="This file is currently being remuxed"
         >
-          {busy ? "…" : "EN only"}
-        </button>
-      )}
-      {showSubs && (
-        <button
-          type="button"
-          className="btn-secondary lib-en-btn"
-          disabled={busy}
-          title="Remux file to keep English subtitles only (audio untouched)"
-          onClick={(e) => {
-            e.stopPropagation();
-            onEnglishSubs?.();
-          }}
-        >
-          {busy ? "…" : "EN subs"}
-        </button>
+          <span className="remux-spin" aria-hidden="true" />
+          {remuxing > 0 ? `Remuxing ${remuxing}%` : "Remuxing…"}
+        </span>
+      ) : (
+        <>
+          {showEn && (
+            <button
+              type="button"
+              className="btn-secondary lib-en-btn"
+              disabled={busy}
+              title="Remux file to keep English audio and subtitles only"
+              onClick={(e) => {
+                e.stopPropagation();
+                onEnglishOnly?.();
+              }}
+            >
+              {busy ? "…" : "EN only"}
+            </button>
+          )}
+          {showSubs && (
+            <button
+              type="button"
+              className="btn-secondary lib-en-btn"
+              disabled={busy}
+              title="Remux file to keep English subtitles only (audio untouched)"
+              onClick={(e) => {
+                e.stopPropagation();
+                onEnglishSubs?.();
+              }}
+            >
+              {busy ? "…" : "EN subs"}
+            </button>
+          )}
+        </>
       )}
     </span>
   );
@@ -511,7 +527,7 @@ export function LibraryDetail({
     return undefined;
   }
 
-  async function refreshLangs(files: string[]) {
+  const refreshLangs = useCallback(async function (files: string[]) {
     if (!files.length) return;
     try {
       const res = await fetch("/api/library/probe", {
@@ -527,6 +543,63 @@ export function LibraryDetail({
     } catch {
       // optional
     }
+  }, []);
+
+  const [activeRemux, setActiveRemux] = useState<Record<string, number>>({});
+  const prevActiveRef = useRef<Set<string>>(new Set());
+
+  useEffect(() => {
+    let cancelled = false;
+
+    async function tick() {
+      try {
+        const res = await fetch("/api/remux");
+        if (!res.ok || cancelled) return;
+        const data = await readJson<{ entries?: RemuxLogEntry[] }>(res);
+        if (cancelled) return;
+        const active: Record<string, number> = {};
+        for (const entry of data.entries || []) {
+          if (entry.status === "queued" || entry.status === "working") {
+            active[entry.file] = entry.percent;
+          }
+        }
+        setActiveRemux(active);
+
+        const finished = [...prevActiveRef.current].filter(
+          (p) => !(p in active),
+        );
+        prevActiveRef.current = new Set(Object.keys(active));
+        const relevant = finished.filter((p) =>
+          probeFiles.some((f) =>
+            f
+              .replace(/\\/g, "/")
+              .endsWith(`/${p.replace(/\\/g, "/").split("/").pop()}`),
+          ),
+        );
+        if (relevant.length) void refreshLangs(relevant);
+      } catch {
+        // Progress polling is best-effort.
+      }
+    }
+
+    void tick();
+    const id = window.setInterval(() => void tick(), 1500);
+    return () => {
+      cancelled = true;
+      window.clearInterval(id);
+    };
+  }, [probeFiles, refreshLangs]);
+
+  function activePercentFor(filePath: string | undefined): number | null {
+    if (!filePath) return null;
+    if (filePath in activeRemux) return activeRemux[filePath];
+    const normalized = filePath.replace(/\\/g, "/");
+    if (normalized in activeRemux) return activeRemux[normalized];
+    const base = normalized.split("/").pop() || "";
+    for (const [key, percent] of Object.entries(activeRemux)) {
+      if (key.replace(/\\/g, "/").endsWith(`/${base}`)) return percent;
+    }
+    return null;
   }
 
   async function runRemux(
@@ -779,6 +852,15 @@ export function LibraryDetail({
   const activeGroup =
     seasonGroups.find((g) => g.season === activeSeason) ?? seasonGroups[0];
 
+  const seasonRemuxActive = Boolean(
+    activeGroup?.eps.some(
+      (ep) => ep.path && activePercentFor(ep.path) !== null,
+    ),
+  );
+  const movieRemuxActive = probeFiles.some(
+    (p) => activePercentFor(p) !== null,
+  );
+
   // Cinemeta episode titles, keyed so local files can borrow them.
   const episodeTitles = useMemo(() => {
     const map = new Map<string, string>();
@@ -932,43 +1014,52 @@ export function LibraryDetail({
                         ))}
                       </div>
                     )}
-                    {activeGroup.eps.some((ep) =>
-                      needsEnglishOnly(langsFor(ep.path)),
-                    ) && (
-                      <button
-                        type="button"
-                        className="btn-secondary lib-en-btn-season"
-                        disabled={Boolean(enBusy)}
-                        onClick={() =>
-                          void runRemux(
-                            "en-only",
-                            activeGroup.eps
-                              .map((ep) => ep.path)
-                              .filter((p): p is string => Boolean(p)),
-                          )
-                        }
-                      >
-                        {enBusy ? "Remuxing…" : "English only (season)"}
-                      </button>
-                    )}
-                    {activeGroup.eps.some((ep) =>
-                      needsEnglishSubsOnly(langsFor(ep.path)),
-                    ) && (
-                      <button
-                        type="button"
-                        className="btn-secondary lib-en-btn-season"
-                        disabled={Boolean(enBusy)}
-                        onClick={() =>
-                          void runRemux(
-                            "en-subs",
-                            activeGroup.eps
-                              .map((ep) => ep.path)
-                              .filter((p): p is string => Boolean(p)),
-                          )
-                        }
-                      >
-                        {enBusy ? "Remuxing…" : "English subs (season)"}
-                      </button>
+                    {seasonRemuxActive ? (
+                      <span className="lib-detail-tag is-remuxing">
+                        <span className="remux-spin" aria-hidden="true" />
+                        Remuxing…
+                      </span>
+                    ) : (
+                      <>
+                        {activeGroup.eps.some((ep) =>
+                          needsEnglishOnly(langsFor(ep.path)),
+                        ) && (
+                          <button
+                            type="button"
+                            className="btn-secondary lib-en-btn-season"
+                            disabled={Boolean(enBusy)}
+                            onClick={() =>
+                              void runRemux(
+                                "en-only",
+                                activeGroup.eps
+                                  .map((ep) => ep.path)
+                                  .filter((p): p is string => Boolean(p)),
+                              )
+                            }
+                          >
+                            {enBusy ? "Remuxing…" : "English only (season)"}
+                          </button>
+                        )}
+                        {activeGroup.eps.some((ep) =>
+                          needsEnglishSubsOnly(langsFor(ep.path)),
+                        ) && (
+                          <button
+                            type="button"
+                            className="btn-secondary lib-en-btn-season"
+                            disabled={Boolean(enBusy)}
+                            onClick={() =>
+                              void runRemux(
+                                "en-subs",
+                                activeGroup.eps
+                                  .map((ep) => ep.path)
+                                  .filter((p): p is string => Boolean(p)),
+                              )
+                            }
+                          >
+                            {enBusy ? "Remuxing…" : "English subs (season)"}
+                          </button>
+                        )}
+                      </>
                     )}
                   </div>
 
@@ -1002,6 +1093,7 @@ export function LibraryDetail({
                             langs={langsFor(ep.path)}
                             resolution={res}
                             busy={Boolean(enBusy)}
+                            remuxing={activePercentFor(ep.path)}
                             onEnglishOnly={
                               ep.path
                                 ? () => void runRemux("en-only", [ep.path!])
@@ -1022,45 +1114,58 @@ export function LibraryDetail({
 
               {!isShow && (
                 <>
-                  {selection.movie.files.some((file) => {
-                    const filePath = probeFiles.find(
-                      (p) =>
-                        p.endsWith(`/${file}`) ||
-                        p.endsWith(`\\${file}`) ||
-                        p.endsWith(file),
-                    );
-                    return needsEnglishOnly(langsFor(filePath));
-                  }) && (
+                  {movieRemuxActive ? (
                     <div className="lib-season-bar">
-                      <button
-                        type="button"
-                        className="btn-secondary lib-en-btn-season"
-                        disabled={Boolean(enBusy)}
-                        onClick={() => void runRemux("en-only", probeFiles)}
-                      >
-                        {enBusy ? "Remuxing…" : "English only"}
-                      </button>
+                      <span className="lib-detail-tag is-remuxing">
+                        <span className="remux-spin" aria-hidden="true" />
+                        Remuxing…
+                      </span>
                     </div>
-                  )}
-                  {selection.movie.files.some((file) => {
-                    const filePath = probeFiles.find(
-                      (p) =>
-                        p.endsWith(`/${file}`) ||
-                        p.endsWith(`\\${file}`) ||
-                        p.endsWith(file),
-                    );
-                    return needsEnglishSubsOnly(langsFor(filePath));
-                  }) && (
-                    <div className="lib-season-bar">
-                      <button
-                        type="button"
-                        className="btn-secondary lib-en-btn-season"
-                        disabled={Boolean(enBusy)}
-                        onClick={() => void runRemux("en-subs", probeFiles)}
-                      >
-                        {enBusy ? "Remuxing…" : "English subs"}
-                      </button>
-                    </div>
+                  ) : (
+                    <>
+                      {selection.movie.files.some((file) => {
+                        const filePath = probeFiles.find(
+                          (p) =>
+                            p.endsWith(`/${file}`) ||
+                            p.endsWith(`\\${file}`) ||
+                            p.endsWith(file),
+                        );
+                        return needsEnglishOnly(langsFor(filePath));
+                      }) && (
+                        <div className="lib-season-bar">
+                          <button
+                            type="button"
+                            className="btn-secondary lib-en-btn-season"
+                            disabled={Boolean(enBusy)}
+                            onClick={() => void runRemux("en-only", probeFiles)}
+                          >
+                            {enBusy ? "Remuxing…" : "English only"}
+                          </button>
+                        </div>
+                      )}
+                      {selection.movie.files.some((file) => {
+                        const filePath = probeFiles.find(
+                          (p) =>
+                            p.endsWith(`/${file}`) ||
+                            p.endsWith(`\\${file}`) ||
+                            p.endsWith(file),
+                        );
+                        return needsEnglishSubsOnly(langsFor(filePath));
+                      }) && (
+                        <div className="lib-season-bar">
+                          <button
+                            type="button"
+                            className="btn-secondary lib-en-btn-season"
+                            disabled={Boolean(enBusy)}
+                            onClick={() =>
+                              void runRemux("en-subs", probeFiles)
+                            }
+                          >
+                            {enBusy ? "Remuxing…" : "English subs"}
+                          </button>
+                        </div>
+                      )}
+                    </>
                   )}
                   {(enStatus || enError) && (
                     <p className={enError ? "lib-naming-error" : "lib-en-status"}>
@@ -1085,6 +1190,7 @@ export function LibraryDetail({
                             langs={langsFor(filePath)}
                             resolution={res}
                             busy={Boolean(enBusy)}
+                            remuxing={activePercentFor(filePath)}
                             onEnglishOnly={
                               filePath
                                 ? () => void runRemux("en-only", [filePath])

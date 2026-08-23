@@ -16,9 +16,10 @@ export async function GET(request: Request) {
     const year = searchParams.get("year") || undefined;
     const season = searchParams.get("season");
     const episode = searchParams.get("episode");
+    const force = searchParams.get("force") === "1";
 
     const [library, settings] = await Promise.all([
-      scanLibrary(),
+      scanLibrary({ force }),
       getSettings(),
     ]);
 

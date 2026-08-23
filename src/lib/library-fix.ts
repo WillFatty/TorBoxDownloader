@@ -1,12 +1,12 @@
 import { promises as fs } from "fs";
 import path from "path";
 import { parseEpisodeFromName } from "./episodes";
+import { isVideoFileName } from "./library";
 import { expectedMovieFolder } from "./library-naming";
 import { buildJellyfinPaths, sanitizeFileName } from "./naming";
 import { getSettings, libraryRootFor } from "./settings";
 import type { MediaType } from "./types";
 
-const VIDEO_EXT = /\.(mkv|mp4|avi|m4v|ts|mov)$/i;
 const RESOLUTION = /\b(2160p|1080p|720p|480p|4k)\b/i;
 
 export interface FixRequest {
@@ -194,7 +194,7 @@ async function listVideoFiles(dir: string): Promise<string[]> {
   try {
     const entries = await fs.readdir(dir, { withFileTypes: true });
     return entries
-      .filter((e) => e.isFile() && VIDEO_EXT.test(e.name))
+      .filter((e) => e.isFile() && isVideoFileName(e.name))
       .map((e) => e.name);
   } catch {
     return [];

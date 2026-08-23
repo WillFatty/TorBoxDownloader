@@ -69,9 +69,9 @@ export function LibraryPage() {
     setBrokenArt((prev) => ({ ...prev, [key]: true }));
   }
 
-  async function reloadLibrary() {
+  async function reloadLibrary(force = false) {
     try {
-      const res = await fetch("/api/library");
+      const res = await fetch(`/api/library${force ? "?force=1" : ""}`);
       const data = await readJson<{
         error?: string;
         library?: {
@@ -97,10 +97,10 @@ export function LibraryPage() {
     }
   }
 
-  async function load() {
+  async function load(force = false) {
     setLoading(true);
     setError(null);
-    await reloadLibrary();
+    await reloadLibrary(force);
     setLoading(false);
   }
 
@@ -114,7 +114,7 @@ export function LibraryPage() {
       return next;
     });
 
-    const library = await reloadLibrary();
+    const library = await reloadLibrary(true);
     if (!library || !selection) return;
 
     const targetFolder = result.newFolder;
@@ -258,7 +258,7 @@ export function LibraryPage() {
           type="button"
           className="btn-secondary"
           disabled={loading}
-          onClick={() => void load()}
+          onClick={() => void load(true)}
         >
           {loading ? "Scanning…" : "Rescan"}
         </button>
