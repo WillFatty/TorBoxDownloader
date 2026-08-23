@@ -691,7 +691,7 @@ export function SearchWorkspace() {
 
                 <div className="home-steps">
                   {[
-                    ["Search", "Cinemeta lookup across movies & TV"],
+                    ["Search", "Cinemeta titles — or paste a magnet link"],
                     ["Pick", "Comet streams ranked by caching"],
                     ["Download", "TorBox grabs it with live progress"],
                     ["Auto-filed", "Named & sorted into Movies / Seasons"],
