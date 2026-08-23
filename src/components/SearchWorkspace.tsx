@@ -2,7 +2,6 @@
 
 import Link from "next/link";
 import { useEffect, useMemo, useState } from "react";
-import { formatBytes, formatSpeed } from "@/lib/comet";
 import type {
   DownloadJob,
   MediaMeta,
@@ -14,18 +13,6 @@ import { readJson } from "./LibraryShared";
 
 function formatStatus(status: DownloadJob["status"]) {
   return status.replace(/_/g, " ");
-}
-
-function jobSpeedLabel(job: DownloadJob): string | null {
-  return formatSpeed(job.speedBytesPerSec);
-}
-
-function jobTransferLabel(job: DownloadJob): string | null {
-  if (job.bytesDownloaded <= 0) return null;
-  const done = formatBytes(job.bytesDownloaded);
-  const total = job.bytesTotal > 0 ? formatBytes(job.bytesTotal) : null;
-  if (!done) return null;
-  return total ? `${done} / ${total}` : done;
 }
 
 function normTitle(s: string) {
@@ -45,6 +32,9 @@ interface LibSnapshot {
     episodes: Array<{ season: number; episode: number }>;
   }>;
 }
+
+const TITLE_WINDOW = 10;
+const TITLE_ROTATE_MS = 6000;
 
 export function SearchWorkspace() {
   const [query, setQuery] = useState("");
@@ -142,6 +132,61 @@ export function SearchWorkspace() {
     () => streams.filter((s) => s.cached).length,
     [streams],
   );
+
+  const libraryCounts = useMemo(() => {
+    if (!library) return null;
+    return {
+      movies: library.movies.length,
+      shows: library.shows.length,
+      episodes: library.shows.reduce((sum, s) => sum + s.episodeCount, 0),
+    };
+  }, [library]);
+
+  const allLibraryTitles = useMemo(() => {
+    if (!library) return [];
+    const movies = library.movies;
+    const shows = library.shows;
+    const out: string[] = [];
+    const max = Math.max(movies.length, shows.length);
+    for (let i = 0; i < max; i++) {
+      if (movies[i]) out.push(movies[i].name);
+      if (shows[i]) out.push(shows[i].name);
+    }
+    return out;
+  }, [library]);
+
+  const [titleOffset, setTitleOffset] = useState(0);
+
+  useEffect(() => {
+    if (allLibraryTitles.length <= TITLE_WINDOW) return;
+    const t = setInterval(
+      () => setTitleOffset((o) => o + TITLE_WINDOW),
+      TITLE_ROTATE_MS,
+    );
+    return () => clearInterval(t);
+  }, [allLibraryTitles.length]);
+
+  const libraryTitles = useMemo(() => {
+    const n = allLibraryTitles.length;
+    if (!n) return [];
+    return Array.from(
+      { length: Math.min(TITLE_WINDOW, n) },
+      (_, i) => allLibraryTitles[(titleOffset + i) % n],
+    );
+  }, [allLibraryTitles, titleOffset]);
+
+  const topShows = useMemo(() => {
+    if (!library?.shows.length) return [];
+    const max = Math.max(...library.shows.map((s) => s.episodeCount), 1);
+    return [...library.shows]
+      .sort((a, b) => b.episodeCount - a.episodeCount)
+      .slice(0, 3)
+      .map((s) => ({
+        name: s.name,
+        eps: s.episodeCount,
+        pct: Math.round((s.episodeCount / max) * 100),
+      }));
+  }, [library]);
 
   useEffect(() => {
     if (!episodes.includes(episode) && episodes.length) {
@@ -328,6 +373,16 @@ export function SearchWorkspace() {
   }, []);
 
   useEffect(() => {
+    void fetch("/api/downloads")
+      .then((r) => r.json())
+      .then((d) => {
+        const jobs = (d.jobs || []) as DownloadJob[];
+        setRecentJobs((prev) => (prev.length ? prev : jobs.slice(0, 5)));
+      })
+      .catch(() => {});
+  }, []);
+
+  useEffect(() => {
     if (!picked || !selected) {
       setAutoPreview("");
       setPathPreview("");
@@ -464,7 +519,7 @@ export function SearchWorkspace() {
           <div className="toolbar-row">
             <div className="toolbar-copy">
               <h1>Find &amp; save</h1>
-              <p>Search → Comet → TorBox → local library</p>
+              <p>Search → Comet → TorBox → Local library</p>
             </div>
             <form onSubmit={runSearch} className="search-form">
               <div className="search-row">
@@ -503,9 +558,135 @@ export function SearchWorkspace() {
       <div className={`workspace-body${selected ? " has-selection" : ""}`}>
         {!results.length && !selected && !searching ? (
           <div className="pane" style={{ gridColumn: "1 / -1" }}>
-            <div className="empty-state" style={{ minHeight: "14rem" }}>
-              <strong>Search a title to get started</strong>
-              <p>Pick a movie or show, choose a stream, download via TorBox.</p>
+            <div className="pane-inner">
+              <div className="home-inner">
+                <section className="home-hero">
+                  <p className="page-kicker">TorBox Downloader</p>
+                  <h2>Search a title, pick a stream — it lands in your library.</h2>
+                  <p className="home-hero-sub">
+                    Comet finds the streams, TorBox caches them, and finished
+                    downloads are renamed and sorted straight into your Jellyfin
+                    folders.
+                  </p>
+                  <div className="home-actions">
+                    <Link href="/library" className="btn-primary">
+                      Browse library
+                    </Link>
+                    <Link href="/logs" className="btn-secondary">
+                      Download logs
+                    </Link>
+                  </div>
+                </section>
+
+                <div className="home-steps">
+                  {[
+                    ["Search", "Cinemeta lookup across movies & TV"],
+                    ["Pick", "Comet streams ranked by quality & caching"],
+                    ["Download", "TorBox grabs it, live progress on Logs"],
+                    ["Auto-filed", "Named & sorted into Movies / Seasons"],
+                  ].map(([title, desc], i) => (
+                    <div key={title} className="home-step">
+                      <span className="home-step-num">0{i + 1}</span>
+                      <strong>{title}</strong>
+                      <span>{desc}</span>
+                    </div>
+                  ))}
+                </div>
+
+                <div className="home-grid">
+                  <section className="panel home-panel">
+                    <div className="home-panel-head">
+                      <h3 className="log-section-title">In your library</h3>
+                      <Link href="/library">View all</Link>
+                    </div>
+                    {libraryCounts ? (
+                      <>
+                        <div className="home-chips">
+                          <span className="meta-tag">
+                            {libraryCounts.movies} movie
+                            {libraryCounts.movies === 1 ? "" : "s"}
+                          </span>
+                          <span className="meta-tag">
+                            {libraryCounts.shows} show
+                            {libraryCounts.shows === 1 ? "" : "s"}
+                          </span>
+                          <span className="meta-tag">
+                            {libraryCounts.episodes} episode
+                            {libraryCounts.episodes === 1 ? "" : "s"}
+                          </span>
+                        </div>
+                        {libraryTitles.length > 0 ? (
+                          <div key={titleOffset} className="home-chips swap">
+                            {libraryTitles.map((t, i) => (
+                              <Link key={`${t}-${i}`} href="/library" className="chip">
+                                <span>{t}</span>
+                              </Link>
+                            ))}
+                          </div>
+                        ) : (
+                          <p className="muted">
+                            No media yet — check your Jellyfin paths in Settings.
+                          </p>
+                        )}
+                        {topShows.length > 0 && (
+                          <div className="home-top home-divider">
+                            <h4 className="home-subhead">Biggest shows</h4>
+                            {topShows.map((s) => (
+                              <div key={s.name} className="home-top-item">
+                                <div className="home-top-row">
+                                  <span className="home-job-name">{s.name}</span>
+                                  <span className="muted" style={{ flexShrink: 0 }}>
+                                    {s.eps} ep{s.eps === 1 ? "" : "s"}
+                                  </span>
+                                </div>
+                                <div className="progress-track">
+                                  <div
+                                    className="progress-fill"
+                                    style={{ width: `${Math.max(s.pct, 6)}%` }}
+                                  />
+                                </div>
+                              </div>
+                            ))}
+                          </div>
+                        )}
+                      </>
+                    ) : (
+                      <p className="muted">Loading library…</p>
+                    )}
+                  </section>
+
+                  <section className="panel home-panel">
+                    <div className="home-panel-head">
+                      <h3 className="log-section-title">Recent downloads</h3>
+                      <Link href="/logs">View all</Link>
+                    </div>
+                    {recentJobs.length > 0 ? (
+                      <ul className="home-jobs">
+                        {recentJobs.slice(0, 5).map((job) => (
+                          <li key={job.id} className="home-job">
+                            <div className="home-job-row">
+                              <span className="home-job-name">{job.fileName}</span>
+                              <span className="muted" style={{ flexShrink: 0 }}>
+                                {formatStatus(job.status)} · {job.progress}%
+                              </span>
+                            </div>
+                            <div className="progress-track">
+                              <div
+                                className="progress-fill"
+                                style={{ width: `${job.progress}%` }}
+                              />
+                            </div>
+                          </li>
+                        ))}
+                      </ul>
+                    ) : (
+                      <p className="muted">
+                        No downloads yet — start one with the search above.
+                      </p>
+                    )}
+                  </section>
+                </div>
+              </div>
             </div>
           </div>
         ) : (
@@ -707,8 +888,9 @@ export function SearchWorkspace() {
                   </p>
                 )}
                 {loadingStreams && (
-                  <p className="muted" style={{ fontSize: "0.875rem", margin: 0 }}>
-                    Fetching Comet…
+                  <p className="stream-loading">
+                    <span className="remux-spin" aria-hidden="true" />
+                    Fetching streams from Comet…
                   </p>
                 )}
 
@@ -856,6 +1038,22 @@ export function SearchWorkspace() {
                 )}
 
                 <div className="stream-list">
+                  {loadingStreams &&
+                    [0, 1, 2, 3].map((i) => (
+                      <div
+                        key={`sk-${i}`}
+                        className="stream-skeleton-card"
+                        style={{ animationDelay: `${i * 0.12}s` }}
+                      >
+                        <div className="stream-skeleton-badges">
+                          <span className="stream-skeleton-line" style={{ width: "3.2rem" }} />
+                          <span className="stream-skeleton-line" style={{ width: "5.6rem" }} />
+                          <span className="stream-skeleton-line" style={{ width: "2.6rem" }} />
+                        </div>
+                        <span className="stream-skeleton-line" style={{ width: "84%" }} />
+                        <span className="stream-skeleton-line" style={{ width: "56%" }} />
+                      </div>
+                    ))}
                   {filteredStreams.map((s) => {
                     const isPicked =
                       picked?.infoHash === s.infoHash &&
@@ -933,90 +1131,6 @@ export function SearchWorkspace() {
                 </div>
 
               </>
-            )}
-
-            {recentJobs.length > 0 && (
-              <div style={{ borderTop: "1px solid var(--line)", paddingTop: "1.15rem" }}>
-                <div
-                  style={{
-                    display: "flex",
-                    alignItems: "center",
-                    justifyContent: "space-between",
-                    gap: "0.5rem",
-                    marginBottom: "0.75rem",
-                  }}
-                >
-                  <h3
-                    className="muted"
-                    style={{
-                      margin: 0,
-                      fontSize: "0.7rem",
-                      fontWeight: 650,
-                      letterSpacing: "0.12em",
-                      textTransform: "uppercase",
-                    }}
-                  >
-                    Active / recent
-                  </h3>
-                  <Link href="/logs" className="text-accent" style={{ fontSize: "0.75rem", fontWeight: 500 }}>
-                    View all
-                  </Link>
-                </div>
-                <ul className="stack" style={{ listStyle: "none", margin: 0, padding: 0, gap: "0.6rem" }}>
-                  {recentJobs.map((job) => {
-                    const speed = jobSpeedLabel(job);
-                    const transfer = jobTransferLabel(job);
-                    return (
-                      <li
-                        key={job.id}
-                        style={{
-                          border: "1px solid var(--line)",
-                          borderRadius: "0.75rem",
-                          background: "color-mix(in srgb, var(--bg-elevated) 50%, transparent)",
-                          padding: "0.65rem 0.85rem",
-                          fontSize: "0.875rem",
-                        }}
-                      >
-                        <div style={{ display: "flex", justifyContent: "space-between", gap: "0.5rem" }}>
-                          <span style={{ overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap", fontWeight: 500 }}>
-                            {job.fileName}
-                          </span>
-                          <span className="muted" style={{ flexShrink: 0 }}>
-                            {formatStatus(job.status)} {job.progress}%
-                            {speed ? ` · ${speed}` : ""}
-                          </span>
-                        </div>
-                        {transfer && (
-                          <p className="muted" style={{ margin: "0.25rem 0 0", fontSize: "0.75rem" }}>
-                            {transfer}
-                          </p>
-                        )}
-                        {job.packSummary && (
-                          <p className="text-violet" style={{ margin: "0.25rem 0 0", fontSize: "0.75rem" }}>
-                            {job.packSummary}
-                          </p>
-                        )}
-                        {job.savedFiles?.length > 1 && (
-                          <p className="muted" style={{ margin: "0.25rem 0 0", fontSize: "0.75rem" }}>
-                            {job.savedFiles.length} files saved
-                          </p>
-                        )}
-                        <div className="progress-track" style={{ marginTop: "0.5rem" }}>
-                          <div
-                            className="progress-fill"
-                            style={{ width: `${job.progress}%` }}
-                          />
-                        </div>
-                        {job.error && (
-                          <p className="text-danger" style={{ margin: "0.4rem 0 0", fontSize: "0.75rem" }}>
-                            {job.error}
-                          </p>
-                        )}
-                      </li>
-                    );
-                  })}
-                </ul>
-              </div>
             )}
 
             {selected && picked && (
