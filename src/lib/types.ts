@@ -93,6 +93,10 @@ export interface DownloadJob {
   multiEpisode: boolean;
   savedFiles: string[];
   packSummary: string | null;
+  /** Original request inputs, kept so failed jobs can be retried verbatim */
+  fileIdx?: number | null;
+  useAutoName?: boolean;
+  customFileName?: string | null;
 }
 
 export interface CreateDownloadInput {

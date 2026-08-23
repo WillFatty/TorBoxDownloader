@@ -1761,6 +1761,38 @@ body {
   animation: soft-pulse 1.6s ease-in-out infinite;
 }
 
+.log-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.45rem;
+  margin-top: 0.9rem;
+}
+
+.btn-ghost-danger {
+  border: 1px solid color-mix(in srgb, var(--danger) 35%, transparent);
+  border-radius: 999px;
+  background: none;
+  padding: 0.3rem 0.85rem;
+  font-size: 0.75rem;
+  font-weight: 550;
+  color: var(--danger);
+  cursor: pointer;
+  transition:
+    background 0.15s ease,
+    border-color 0.15s ease,
+    opacity 0.15s ease;
+}
+
+.btn-ghost-danger:hover:not(:disabled) {
+  background: color-mix(in srgb, var(--danger) 12%, transparent);
+  border-color: color-mix(in srgb, var(--danger) 55%, transparent);
+}
+
+.btn-ghost-danger:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
 /* —— Remux progress —— */
 .remux-backdrop {
   z-index: 70;

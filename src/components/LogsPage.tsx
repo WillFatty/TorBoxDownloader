@@ -150,9 +150,22 @@ function ProgressRow({
   );
 }
 
-function DownloadCard({ job }: { job: DownloadJob }) {
+function DownloadCard({
+  job,
+  busy,
+  onCancel,
+  onRetry,
+  onDelete,
+}: {
+  job: DownloadJob;
+  busy: boolean;
+  onCancel: () => void;
+  onRetry: () => void;
+  onDelete: () => void;
+}) {
   const tone = JOB_TONE[job.status];
   const active = ACTIVE_JOB_STATUSES.has(job.status);
+  const retryable = job.status === "failed" || job.status === "cancelled";
   const speed = active ? formatSpeed(job.speedBytesPerSec) : null;
   const transferred =
     job.bytesDownloaded > 0
@@ -221,6 +234,37 @@ function DownloadCard({ job }: { job: DownloadJob }) {
           </ul>
         </details>
       )}
+
+      <div className="log-actions">
+        {active && (
+          <button
+            type="button"
+            className="btn-secondary btn-small"
+            disabled={busy}
+            onClick={onCancel}
+          >
+            {busy ? "…" : "Cancel"}
+          </button>
+        )}
+        {retryable && (
+          <button
+            type="button"
+            className="btn-secondary btn-small"
+            disabled={busy}
+            onClick={onRetry}
+          >
+            {busy ? "…" : "Retry"}
+          </button>
+        )}
+        <button
+          type="button"
+          className="btn-ghost-danger"
+          disabled={busy}
+          onClick={onDelete}
+        >
+          Delete
+        </button>
+      </div>
     </li>
   );
 }
@@ -271,6 +315,7 @@ export function LogsPage() {
   const [error, setError] = useState<string | null>(null);
   const [filter, setFilter] = useState<Filter>("all");
   const [live, setLive] = useState(true);
+  const [busyId, setBusyId] = useState<string | null>(null);
 
   async function refresh() {
     try {
@@ -306,6 +351,25 @@ export function LogsPage() {
     const id = setInterval(() => void refresh(), 1500);
     return () => clearInterval(id);
   }, [live]);
+
+  async function jobAction(id: string, kind: "cancel" | "retry" | "delete") {
+    setBusyId(id);
+    try {
+      const res =
+        kind === "delete"
+          ? await fetch(`/api/downloads/${id}`, { method: "DELETE" })
+          : await fetch(`/api/downloads/${id}/${kind}`, { method: "POST" });
+      if (!res.ok) {
+        const data = await readJson<{ error?: string }>(res);
+        throw new Error(data.error || "Action failed");
+      }
+      await refresh();
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Action failed");
+    } finally {
+      setBusyId(null);
+    }
+  }
 
   const activeJobs = jobs.filter((job) => ACTIVE_JOB_STATUSES.has(job.status));
   const doneJobs = jobs.filter((job) => job.status === "completed");
@@ -446,7 +510,14 @@ export function LogsPage() {
             ) : (
               <ul className="space-y-3">
                 {shownJobs.map((job) => (
-                  <DownloadCard key={job.id} job={job} />
+                  <DownloadCard
+                    key={job.id}
+                    job={job}
+                    busy={busyId === job.id}
+                    onCancel={() => void jobAction(job.id, "cancel")}
+                    onRetry={() => void jobAction(job.id, "retry")}
+                    onDelete={() => void jobAction(job.id, "delete")}
+                  />
                 ))}
               </ul>
             )}

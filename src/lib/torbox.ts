@@ -6,6 +6,7 @@ export class TorBoxError extends Error {
     message: string,
     public status?: number,
     public code?: string,
+    public retryAfterMs?: number,
   ) {
     super(message);
     this.name = "TorBoxError";
@@ -21,9 +22,10 @@ const TRANSIENT_CODES = new Set([
 export function isTransientTorBoxError(err: unknown): boolean {
   if (err instanceof TorBoxError) {
     if (err.status != null && err.status >= 500) return true;
+    if (err.status === 429) return true;
     const code = (err.code || "").toUpperCase();
     if (TRANSIENT_CODES.has(code)) return true;
-    return /database_error|try again later|temporarily|timed out/i.test(
+    return /database_error|try again later|temporarily|timed out|rate limit/i.test(
       err.message,
     );
   }
@@ -53,8 +55,11 @@ async function withRetry<T>(
     } catch (err) {
       last = err;
       if (!isTransientTorBoxError(err) || i === attempts - 1) throw err;
-      const wait = Math.min(12_000, baseMs * 2 ** i) + Math.floor(Math.random() * 300);
-      await sleep(wait);
+      const backoff =
+        Math.min(12_000, baseMs * 2 ** i) + Math.floor(Math.random() * 300);
+      const retryAfterMs =
+        err instanceof TorBoxError ? err.retryAfterMs || 0 : 0;
+      await sleep(Math.max(backoff, retryAfterMs));
     }
   }
   throw last;
@@ -70,6 +75,20 @@ function enqueueExclusive<T>(fn: () => Promise<T>): Promise<T> {
     () => undefined,
   );
   return run;
+}
+
+/** Keep at least this much space between any two mylist API calls. */
+let lastListAt = 0;
+const LIST_MIN_GAP_MS = 1200;
+
+async function throttledCall<T>(fn: () => Promise<T>): Promise<T> {
+  for (;;) {
+    const wait = lastListAt + LIST_MIN_GAP_MS - Date.now();
+    if (wait <= 0) break;
+    await sleep(wait);
+  }
+  lastListAt = Date.now();
+  return fn();
 }
 
 async function torboxFetch(
@@ -111,11 +130,18 @@ async function torboxFetch(
 
     if (!res.ok || json?.success === false) {
       const code = typeof json?.error === "string" ? json.error : undefined;
-      throw new TorBoxError(
-        json?.detail || code || `TorBox request failed (${res.status})`,
-        res.status,
-        code,
-      );
+      const retryAfterRaw = Number(res.headers.get("retry-after"));
+      const retryAfterMs =
+        Number.isFinite(retryAfterRaw) && retryAfterRaw > 0
+          ? Math.min(60_000, retryAfterRaw * 1000)
+          : undefined;
+      const message =
+        json?.detail ||
+        code ||
+        (res.status === 429
+          ? "TorBox rate limit hit — will retry"
+          : `TorBox request failed (${res.status})`);
+      throw new TorBoxError(message, res.status, code, retryAfterMs);
     }
     return json;
   } catch (err) {
@@ -197,9 +223,11 @@ export async function getTorrentList(
   const qs = params.toString();
   const json = await withRetry(
     () =>
-      torboxFetch(apiKey, `/api/torrents/mylist${qs ? `?${qs}` : ""}`, {
-        timeoutMs: 20_000,
-      }),
+      throttledCall(() =>
+        torboxFetch(apiKey, `/api/torrents/mylist${qs ? `?${qs}` : ""}`, {
+          timeoutMs: 20_000,
+        }),
+      ),
     { attempts: 3, baseMs: 600 },
   );
   return json?.data as TorBoxTorrent | TorBoxTorrent[];

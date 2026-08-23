@@ -12,3 +12,15 @@ export async function GET(
   }
   return NextResponse.json({ job });
 }
+
+export async function DELETE(
+  _request: Request,
+  context: { params: Promise<{ id: string }> },
+) {
+  const { id } = await context.params;
+  const removed = await downloadManager.remove(id);
+  if (!removed) {
+    return NextResponse.json({ error: "Not found" }, { status: 404 });
+  }
+  return NextResponse.json({ ok: true });
+}

@@ -20,6 +20,7 @@ import {
   normalizeTorrentProgress,
   pickBestVideoFile,
   requestDownloadLink,
+  TorBoxError,
   type TorBoxFile,
   type TorBoxTorrent,
 } from "./torbox";
@@ -60,6 +61,16 @@ class DownloadManager {
   private loaded = false;
   /** Ephemeral: episode title maps keyed by job id (not persisted) */
   private titleMaps = new Map<string, Record<string, string>>();
+  /** AbortControllers for in-flight file saves, keyed by job id */
+  private controllers = new Map<string, AbortController>();
+
+  private static ACTIVE: ReadonlySet<DownloadStatus> = new Set([
+    "queued",
+    "creating",
+    "torbox_downloading",
+    "fetching_link",
+    "saving",
+  ]);
 
   subscribe(fn: Listener) {
     this.listeners.add(fn);
@@ -83,6 +94,9 @@ class DownloadManager {
         if (job.episodeTitle === undefined) job.episodeTitle = null;
         if (job.imdbId === undefined) job.imdbId = null;
         if (job.speedBytesPerSec == null) job.speedBytesPerSec = 0;
+        if (job.fileIdx === undefined) job.fileIdx = null;
+        if (job.useAutoName === undefined) job.useAutoName = true;
+        if (job.customFileName === undefined) job.customFileName = null;
         this.jobs.set(job.id, job);
         if (
           job.status !== "completed" &&
@@ -192,6 +206,9 @@ class DownloadManager {
       multiEpisode: false,
       savedFiles: [],
       packSummary: null,
+      fileIdx: input.fileIdx,
+      useAutoName: input.useAutoName,
+      customFileName: input.useAutoName ? null : input.customFileName || null,
     };
 
     if (input.episodeTitles && Object.keys(input.episodeTitles).length) {
@@ -205,14 +222,69 @@ class DownloadManager {
     return job;
   }
 
+  cancel(id: string): "ok" | "missing" | "inactive" {
+    const job = this.jobs.get(id);
+    if (!job) return "missing";
+    if (!DownloadManager.ACTIVE.has(job.status)) return "inactive";
+    this.patch(id, { status: "cancelled", speedBytesPerSec: 0 });
+    this.controllers.get(id)?.abort();
+    return "ok";
+  }
+
+  async remove(id: string): Promise<boolean> {
+    await this.load();
+    const job = this.jobs.get(id);
+    if (!job) return false;
+    if (DownloadManager.ACTIVE.has(job.status)) {
+      this.cancel(id);
+      // Give the in-flight save a beat to unwind before dropping the record.
+      for (let i = 0; i < 20 && this.running.has(id); i++) {
+        await sleep(100);
+      }
+    }
+    this.jobs.delete(id);
+    this.titleMaps.delete(id);
+    this.controllers.get(id)?.abort();
+    this.controllers.delete(id);
+    await this.persist();
+    return true;
+  }
+
+  async retry(id: string): Promise<DownloadJob | null> {
+    await this.load();
+    const old = this.jobs.get(id);
+    if (!old) return null;
+    return this.enqueue({
+      infoHash: old.infoHash,
+      fileIdx: old.fileIdx ?? null,
+      mediaName: old.mediaName,
+      mediaType: old.mediaType,
+      imdbId: old.imdbId,
+      year: old.year,
+      season: old.season,
+      episode: old.episode,
+      episodeTitle: old.episodeTitle,
+      quality: old.quality,
+      useAutoName: old.useAutoName ?? true,
+      customFileName: (old.useAutoName ?? true) ? null : old.customFileName,
+    });
+  }
+
+  private isCancelled(id: string): boolean {
+    return this.jobs.get(id)?.status === "cancelled";
+  }
+
   private async run(jobId: string, fileIdx: number | null) {
     if (this.running.has(jobId)) return;
     this.running.add(jobId);
 
+    const controller = new AbortController();
+    this.controllers.set(jobId, controller);
+
     try {
       const settings = await getSettings();
       const job = this.jobs.get(jobId);
-      if (!job) return;
+      if (!job || job.status === "cancelled") return;
 
       this.patch(jobId, { status: "creating", progress: 5 });
       const magnet = hashToMagnet(job.infoHash);
@@ -221,6 +293,7 @@ class DownloadManager {
         magnet,
         job.mediaName,
       );
+      if (this.isCancelled(jobId)) return;
       this.patch(jobId, {
         torboxTorrentId: created.torrent_id,
         status: "torbox_downloading",
@@ -232,7 +305,7 @@ class DownloadManager {
         created.torrent_id,
         jobId,
       );
-      if (!torrent) return;
+      if (!torrent || this.isCancelled(jobId)) return;
 
       const episodeFiles = listEpisodeVideos(torrent.files);
 
@@ -312,11 +385,13 @@ class DownloadManager {
           episodeFiles.find((e) => e.file.id === file!.id)?.episode ?? job.episode,
       });
 
+      if (this.isCancelled(jobId)) return;
       const link = await requestDownloadLink(
         settings.torboxApiKey,
         created.torrent_id,
         file.id,
       );
+      if (this.isCancelled(jobId)) return;
 
       this.patch(jobId, { status: "saving", progress: 75 });
       await this.saveFile(jobId, link, destPath, file.size, 75, 99);
@@ -328,10 +403,17 @@ class DownloadManager {
         savedFiles: [destPath],
       });
     } catch (err) {
-      const message = err instanceof Error ? err.message : "Download failed";
+      if (this.isCancelled(jobId)) return;
+      const message =
+        err instanceof TorBoxError && err.status === 429
+          ? "TorBox rate limit reached — automatic retries didn't help. Try again in a minute."
+          : err instanceof Error
+            ? err.message
+            : "Download failed";
       this.patch(jobId, { status: "failed", error: message });
     } finally {
       this.running.delete(jobId);
+      this.controllers.delete(jobId);
     }
   }
 
@@ -370,6 +452,7 @@ class DownloadManager {
     let downloadedBytes = 0;
 
     for (let i = 0; i < episodes.length; i++) {
+      if (this.isCancelled(jobId)) return;
       const ep = episodes[i];
       const epTitle = titles.get(`${ep.season}:${ep.episode}`) || null;
       const jelly = buildJellyfinPaths({
@@ -395,6 +478,7 @@ class DownloadManager {
       });
 
       const link = await requestDownloadLink(apiKey, torrentId, ep.file.id);
+      if (this.isCancelled(jobId)) return;
       const startPct = 70 + Math.round((i / episodes.length) * 28);
       const endPct = 70 + Math.round(((i + 1) / episodes.length) * 28);
 
@@ -449,6 +533,7 @@ class DownloadManager {
           await sleep(pollMs);
           continue;
         }
+        if (this.isCancelled(jobId)) return null;
 
         const frac = normalizeTorrentProgress(torrent.progress);
         const progress = Math.min(65, 15 + Math.round(frac * 50));
@@ -469,7 +554,8 @@ class DownloadManager {
         }
       } catch (err) {
         if (isTransientTorBoxError(err)) {
-          await sleep(Math.min(8_000, pollMs * 2));
+          const rateLimited = err instanceof TorBoxError && err.status === 429;
+          await sleep(rateLimited ? 10_000 : Math.min(8_000, pollMs * 2));
           continue;
         }
         throw err;
@@ -490,8 +576,9 @@ class DownloadManager {
   ) {
     await fs.mkdir(path.dirname(destPath), { recursive: true });
     const tmp = `${destPath}.part`;
+    const signal = this.controllers.get(jobId)?.signal;
 
-    const res = await fetch(url);
+    const res = await fetch(url, { signal });
     if (!res.ok || !res.body) {
       throw new Error(`File download failed (${res.status})`);
     }
@@ -525,6 +612,11 @@ class DownloadManager {
           lastPatch = now;
           const job = self.jobs.get(jobId);
           if (job) {
+            if (job.status === "cancelled") {
+              self.controllers.get(jobId)?.abort();
+              cb(new Error("Cancelled"));
+              return;
+            }
             const pct =
               total > 0
                 ? progressStart + Math.round((downloaded / total) * span)
@@ -544,6 +636,9 @@ class DownloadManager {
     try {
       await pipeline(nodeStream, transform, createWriteStream(tmp));
       await fs.rename(tmp, destPath);
+    } catch (err) {
+      await fs.rm(tmp, { force: true }).catch(() => {});
+      throw err;
     } finally {
       this.patch(jobId, { speedBytesPerSec: 0 });
     }
