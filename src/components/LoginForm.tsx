@@ -1,12 +1,11 @@
-"use client";
 
 import { FormEvent, useState } from "react";
-import { useRouter, useSearchParams } from "next/navigation";
+import { useNavigate, useSearchParams } from "react-router-dom";
 import { readJson } from "./LibraryShared";
 
 export function LoginForm() {
-  const router = useRouter();
-  const params = useSearchParams();
+  const navigate = useNavigate();
+  const [params] = useSearchParams();
   const next = params.get("next") || "/";
 
   const [password, setPassword] = useState("");
@@ -25,8 +24,7 @@ export function LoginForm() {
       });
       const data = await readJson<{ error?: string; ok?: boolean }>(res);
       if (!res.ok) throw new Error(data.error || "Login failed");
-      router.replace(next.startsWith("/") ? next : "/");
-      router.refresh();
+      navigate(next.startsWith("/") ? next : "/", { replace: true });
     } catch (err) {
       setError(err instanceof Error ? err.message : "Login failed");
     } finally {

@@ -703,7 +703,6 @@ class DownloadManager {
 
     const total = Number(res.headers.get("content-length")) || expectedSize || 0;
     let downloaded = 0;
-    const self = this;
     const span = Math.max(1, progressEnd - progressStart);
     let lastTick = Date.now();
     let lastBytes = 0;
@@ -714,7 +713,7 @@ class DownloadManager {
       res.body as import("stream/web").ReadableStream,
     );
     const transform = new Transform({
-      transform(chunk, _enc, cb) {
+      transform: (chunk, _enc, cb) => {
         downloaded += chunk.length;
         const now = Date.now();
         const dt = now - lastTick;
@@ -728,10 +727,10 @@ class DownloadManager {
         const done = total > 0 && downloaded >= total;
         if (now - lastPatch >= 250 || done) {
           lastPatch = now;
-          const job = self.jobs.get(jobId);
+          const job = this.jobs.get(jobId);
           if (job) {
             if (job.status === "cancelled") {
-              self.controllers.get(jobId)?.abort();
+              this.controllers.get(jobId)?.abort();
               cb(new Error("Cancelled"));
               return;
             }
@@ -739,7 +738,7 @@ class DownloadManager {
               total > 0
                 ? progressStart + Math.round((downloaded / total) * span)
                 : progressStart;
-            self.patch(jobId, {
+            this.patch(jobId, {
               bytesDownloaded: (bytes?.offset ?? 0) + downloaded,
               bytesTotal: bytes ? bytes.total : total || job.bytesTotal,
               progress: Math.min(progressEnd, pct),

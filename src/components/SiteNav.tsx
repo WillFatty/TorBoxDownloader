@@ -1,7 +1,5 @@
-"use client";
 
-import Link from "next/link";
-import { usePathname, useRouter } from "next/navigation";
+import { Link, useLocation, useNavigate } from "react-router-dom";
 
 const links = [
   { href: "/", label: "Search" },
@@ -11,21 +9,21 @@ const links = [
 ];
 
 export function SiteNav() {
-  const pathname = usePathname();
-  const router = useRouter();
+  const location = useLocation();
+  const navigate = useNavigate();
+  const pathname = location.pathname;
 
   if (pathname.startsWith("/login")) return null;
 
   async function logout() {
     await fetch("/api/auth/logout", { method: "POST" });
-    router.replace("/login");
-    router.refresh();
+    navigate("/login", { replace: true });
   }
 
   return (
     <header className="site-header">
       <div className="shell site-header-inner">
-        <Link href="/" className="site-brand">
+        <Link to="/" className="site-brand">
           <span>TorBox</span>
           <span className="site-brand-accent">DL</span>
         </Link>
@@ -38,7 +36,7 @@ export function SiteNav() {
             return (
               <Link
                 key={link.href}
-                href={link.href}
+                to={link.href}
                 className={active ? "is-active" : ""}
               >
                 {link.label}

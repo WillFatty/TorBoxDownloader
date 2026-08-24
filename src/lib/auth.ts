@@ -50,14 +50,3 @@ export function verifySessionToken(token: string | undefined | null): boolean {
   }
 }
 
-export function sessionCookieOptions(token: string) {
-  return {
-    name: AUTH_COOKIE,
-    value: token,
-    httpOnly: true,
-    sameSite: "lax" as const,
-    secure: process.env.NODE_ENV === "production",
-    path: "/",
-    maxAge: MAX_AGE_SEC,
-  };
-}

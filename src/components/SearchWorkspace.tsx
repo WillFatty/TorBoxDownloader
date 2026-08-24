@@ -1,6 +1,5 @@
-"use client";
 
-import Link from "next/link";
+import { Link } from "react-router-dom";
 import { useEffect, useMemo, useState } from "react";
 import type {
   DownloadJob,
@@ -712,7 +711,7 @@ export function SearchWorkspace() {
                       <p className="muted home-pulse-stats">Loading library…</p>
                     )}
                   </div>
-                  <Link href="/library" className="btn-secondary btn-small">
+                  <Link to="/library" className="btn-secondary btn-small">
                     Browse library
                   </Link>
                 </div>
@@ -721,7 +720,7 @@ export function SearchWorkspace() {
                     {libraryTitles.map((t, i) => (
                       <Link
                         key={`${t}-${i}`}
-                        href="/library"
+                        to="/library"
                         className="home-title-chip"
                       >
                         {t}
@@ -772,7 +771,7 @@ export function SearchWorkspace() {
                 <section className="home-column">
                   <div className="home-column-head">
                     <h2 className="home-section-title">Recent activity</h2>
-                    <Link href="/logs">View logs</Link>
+                    <Link to="/logs">View logs</Link>
                   </div>
                   {recentJobs.length > 0 ? (
                     <ul className="home-activity">
@@ -840,7 +839,6 @@ export function SearchWorkspace() {
                       className={`result-item${active ? " is-active" : ""}`}
                     >
                       {item.poster ? (
-                        // eslint-disable-next-line @next/next/no-img-element
                         <img
                           src={item.poster}
                           alt=""
@@ -891,7 +889,6 @@ export function SearchWorkspace() {
               <>
                 <div className="detail-header">
                   {selected.poster ? (
-                    // eslint-disable-next-line @next/next/no-img-element
                     <img
                       src={selected.poster}
                       alt=""

@@ -7,16 +7,13 @@ RUN npm ci
 
 FROM node:22-bookworm-slim AS build
 WORKDIR /app
-ENV NEXT_TELEMETRY_DISABLED=1
 COPY --from=deps /app/node_modules ./node_modules
 COPY . .
 RUN npm run build
 
 FROM node:22-bookworm-slim AS runner
 
-# Official node image already ships UID/GID 1000 as user "node".
 ENV NODE_ENV=production \
-    NEXT_TELEMETRY_DISABLED=1 \
     PORT=3000 \
     HOSTNAME=0.0.0.0 \
     SETTINGS_PATH=/app/data/settings.json \
@@ -28,15 +25,22 @@ RUN apt-get update \
   && rm -rf /var/lib/apt/lists/*
 
 WORKDIR /app
-COPY --from=build --chown=node:node /app/.next/standalone ./
-COPY --from=build --chown=node:node /app/.next/static ./.next/static
+
+# Production dependencies only (the server bundle externalizes them).
+COPY --from=deps /app/package.json ./package.json
+RUN npm ci --omit=dev && npm cache clean --force
+
+# Built SPA + server bundle.
+COPY --from=build --chown=node:node /app/dist ./dist
+COPY --from=build --chown=node:node /app/dist-server ./dist-server
 COPY --from=build --chown=node:node /app/public ./public
+
 # Bundled probe/remux binaries (fallback when PATH ffmpeg is missing).
-COPY --from=build --chown=node:node /app/node_modules/ffmpeg-static ./node_modules/ffmpeg-static
-COPY --from=build --chown=node:node /app/node_modules/@ffprobe-installer ./node_modules/@ffprobe-installer
+COPY --from=deps --chown=node:node /app/node_modules/ffmpeg-static ./node_modules/ffmpeg-static
+COPY --from=deps --chown=node:node /app/node_modules/@ffprobe-installer ./node_modules/@ffprobe-installer
 
 RUN mkdir -p /app/data && chown node:node /app/data
 
 USER node
 EXPOSE 3000
-CMD ["node", "server.js"]
+CMD ["node", "dist-server/index.js"]

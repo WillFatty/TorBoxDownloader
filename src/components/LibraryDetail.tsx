@@ -1,4 +1,3 @@
-"use client";
 
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { createPortal } from "react-dom";
@@ -852,14 +851,12 @@ export function LibraryDetail({
 
             <div className="lib-hero" style={hueStyle(name)}>
               {meta?.background && (
-                // eslint-disable-next-line @next/next/no-img-element
                 <img src={meta.background} alt="" className="lib-hero-img" />
               )}
               <div className="lib-hero-fade" />
               <div className="lib-hero-content">
                 <span className="lib-hero-poster">
                   {poster ? (
-                    // eslint-disable-next-line @next/next/no-img-element
                     <img src={poster} alt="" className="lib-art-img" />
                   ) : (
                     <span className="lib-tile" style={hueStyle(name)}>

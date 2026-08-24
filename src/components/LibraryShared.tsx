@@ -1,4 +1,3 @@
-"use client";
 
 import type { CSSProperties } from "react";
 
@@ -105,7 +104,6 @@ export function ArtThumb({
   return (
     <span className="lib-art">
       {poster ? (
-        // eslint-disable-next-line @next/next/no-img-element
         <img
           src={poster}
           alt=""

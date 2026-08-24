@@ -1,6 +1,6 @@
 # TorBox Downloader
 
-Next.js app: search movies/TV (Cinemeta) → streams via [Comet](https://github.com/g0ldyy/comet) → download with [TorBox](https://torbox.app) → save to a folder with auto or custom names.
+Vite + React SPA with a Hono API server on Node: search movies/TV (Cinemeta) → streams via [Comet](https://github.com/g0ldyy/comet) → download with [TorBox](https://torbox.app) → save to a folder with auto or custom names.
 
 Example auto name: `Ant Man (2015) - 1080p.mkv`  
 TV: `Breaking Bad - S01E01 - 1080p.mkv`
@@ -67,7 +67,9 @@ npm install
 npm run dev
 ```
 
-Open [http://localhost:3000](http://localhost:3000). Settings page can override env values (stored in `data/settings.json`).
+Open [http://localhost:3000](http://localhost:3000). `npm run dev` starts the Vite dev server (SPA on :3000) and the API server (:3001, proxied under `/api`). Settings page can override env values (stored in `data/settings.json`).
+
+Production build: `npm run build` then `npm start` — a single Node process serves the built SPA and `/api` on `$PORT` (default 3000).
 
 ## Jellyfin layout
 

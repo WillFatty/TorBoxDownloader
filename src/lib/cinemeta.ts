@@ -100,7 +100,7 @@ export async function searchMedia(
 
   const responses = await Promise.all(
     urls.map(async ({ url, type: t }) => {
-      const res = await fetch(url, { next: { revalidate: 300 } });
+      const res = await fetch(url, { cache: "no-store" });
       if (!res.ok) return [] as SearchResult[];
       const data = (await res.json()) as { metas?: CinemetaMeta[] };
       return (data.metas || [])
@@ -124,9 +124,7 @@ export async function getMediaMeta(
   type: MediaType,
   imdbId: string,
 ): Promise<MediaMeta | null> {
-  const res = await fetch(`${CINEMETA}/meta/${type}/${imdbId}.json`, {
-    next: { revalidate: 3600 },
-  });
+  const res = await fetch(`${CINEMETA}/meta/${type}/${imdbId}.json`);
   if (!res.ok) return null;
   const data = (await res.json()) as { meta?: CinemetaMeta };
   if (!data.meta) return null;
