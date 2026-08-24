@@ -12,6 +12,7 @@ import {
 } from "./episodes";
 import { buildJellyfinPaths } from "./naming";
 import { getSettings, libraryRootFor } from "./settings";
+import { STORE_KEYS, storeGetJSON, storeSetJSON } from "./store";
 import {
   createTorrent,
   getTorrentById,
@@ -85,9 +86,11 @@ class DownloadManager {
     if (this.loaded) return;
     this.loaded = true;
     try {
-      const raw = await fs.readFile(JOBS_FILE, "utf8");
-      const list = JSON.parse(raw) as DownloadJob[];
-      for (const job of list) {
+      const list = await storeGetJSON<DownloadJob[]>(
+        STORE_KEYS.jobs,
+        JOBS_FILE,
+      );
+      for (const job of list || []) {
         if (!job.savedFiles) job.savedFiles = [];
         if (job.multiEpisode == null) job.multiEpisode = false;
         if (job.packSummary === undefined) job.packSummary = null;
@@ -115,11 +118,17 @@ class DownloadManager {
   }
 
   private async persist() {
-    await fs.mkdir(path.dirname(JOBS_FILE), { recursive: true });
     const list = [...this.jobs.values()].sort((a, b) =>
       b.createdAt.localeCompare(a.createdAt),
     );
-    await fs.writeFile(JOBS_FILE, JSON.stringify(list, null, 2), "utf8");
+    try {
+      await storeSetJSON(STORE_KEYS.jobs, list, JOBS_FILE);
+    } catch (err) {
+      console.error(
+        "[jobs] failed to persist:",
+        err instanceof Error ? err.message : err,
+      );
+    }
   }
 
   private patch(

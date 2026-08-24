@@ -1,7 +1,7 @@
-import { promises as fs } from "fs";
 import path from "path";
 import { searchMedia } from "./cinemeta";
 import { normalizeTitle } from "./library";
+import { STORE_KEYS, storeGetJSON, storeSetJSON } from "./store";
 import type { MediaType, SearchResult } from "./types";
 
 const DATA_DIR = path.join(process.cwd(), "data");
@@ -42,8 +42,10 @@ let writeChain: Promise<void> = Promise.resolve();
 async function loadCache(): Promise<Record<string, CacheEntry>> {
   if (cache) return cache;
   try {
-    const raw = await fs.readFile(CACHE_FILE, "utf8");
-    const parsed = JSON.parse(raw) as Record<string, CacheEntry>;
+    const parsed = await storeGetJSON<Record<string, CacheEntry>>(
+      STORE_KEYS.artworkCache,
+      CACHE_FILE,
+    );
     cache = {};
     for (const [key, entry] of Object.entries(parsed || {})) {
       // Drop entries written by older matching rules.
@@ -59,8 +61,7 @@ function persistCache(): Promise<void> {
   writeChain = writeChain.then(async () => {
     if (!cache) return;
     try {
-      await fs.mkdir(path.dirname(CACHE_FILE), { recursive: true });
-      await fs.writeFile(CACHE_FILE, JSON.stringify(cache, null, 2), "utf8");
+      await storeSetJSON(STORE_KEYS.artworkCache, cache, CACHE_FILE);
     } catch {
       // An unwritable cache only costs repeat lookups, never correctness.
     }

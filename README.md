@@ -90,9 +90,12 @@ Separate folders for each library:
 
 ## Notes
 
+- App state (settings, download jobs, artwork/probe caches, remux log) storage is toggled in `.env` via `STORAGE_BACKEND`:
+  - `redis` (default) — stores everything in Redis (`REDIS_HOST`, `REDIS_PORT`, `REDIS_PASSWORD`, or `REDIS_URL`). Legacy `data/*.json` files are imported into Redis automatically on first read.
+  - `file` — plain JSON files under `data/` (paths configurable via `SETTINGS_PATH` / `JOBS_PATH`).
 - Download path must be writable by the Node process (local machine / server, not the browser).
 - Public Comet instances rate-limit; self-host for heavy use.
-- Jobs tracked in `data/jobs.json`. Active jobs fail on server restart.
+- Jobs tracked under the `tbd:jobs` Redis key. Active jobs fail on server restart.
 
 ## TODO
 - Make jellyfin plugin

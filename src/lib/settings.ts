@@ -1,5 +1,5 @@
-import { promises as fs } from "fs";
 import path from "path";
+import { STORE_KEYS, storeGetJSON, storeSetJSON } from "./store";
 import type { AppSettings } from "./types";
 
 const DATA_DIR = path.join(process.cwd(), "data");
@@ -26,10 +26,6 @@ const defaults = (): AppSettings => ({
   jellyfinUrl: (process.env.JELLYFIN_URL?.trim() || "").replace(/\/$/, ""),
   jellyfinApiKey: process.env.JELLYFIN_API_KEY?.trim() ?? "",
 });
-
-async function ensureDataDir() {
-  await fs.mkdir(path.dirname(SETTINGS_FILE), { recursive: true });
-}
 
 function migratePaths(saved: Partial<AppSettings> & { downloadPath?: string }): {
   moviesPath: string;
@@ -89,26 +85,28 @@ function collapseDupLeaf(p: string, leaf: string): string {
 
 export async function getSettings(): Promise<AppSettings> {
   const base = defaults();
+  let saved: (Partial<AppSettings> & { downloadPath?: string }) | null = null;
   try {
-    const raw = await fs.readFile(SETTINGS_FILE, "utf8");
-    const saved = JSON.parse(raw) as Partial<AppSettings> & {
-      downloadPath?: string;
-    };
-    const paths = migratePaths(saved);
-    return {
-      torboxApiKey: saved.torboxApiKey?.trim() || base.torboxApiKey,
-      cometUrl: (saved.cometUrl?.trim() || base.cometUrl).replace(/\/$/, ""),
-      moviesPath: paths.moviesPath,
-      tvShowsPath: paths.tvShowsPath,
-      jellyfinUrl: (saved.jellyfinUrl?.trim() || base.jellyfinUrl).replace(
-        /\/$/,
-        "",
-      ),
-      jellyfinApiKey: saved.jellyfinApiKey?.trim() || base.jellyfinApiKey,
-    };
+    saved = await storeGetJSON<Partial<AppSettings> & { downloadPath?: string }>(
+      STORE_KEYS.settings,
+      SETTINGS_FILE,
+    );
   } catch {
     return base;
   }
+  if (!saved) return base;
+  const paths = migratePaths(saved);
+  return {
+    torboxApiKey: saved.torboxApiKey?.trim() || base.torboxApiKey,
+    cometUrl: (saved.cometUrl?.trim() || base.cometUrl).replace(/\/$/, ""),
+    moviesPath: paths.moviesPath,
+    tvShowsPath: paths.tvShowsPath,
+    jellyfinUrl: (saved.jellyfinUrl?.trim() || base.jellyfinUrl).replace(
+      /\/$/,
+      "",
+    ),
+    jellyfinApiKey: saved.jellyfinApiKey?.trim() || base.jellyfinApiKey,
+  };
 }
 
 export async function saveSettings(
@@ -141,8 +139,7 @@ export async function saveSettings(
         ? partial.jellyfinApiKey.trim()
         : current.jellyfinApiKey,
   };
-  await ensureDataDir();
-  await fs.writeFile(SETTINGS_FILE, JSON.stringify(next, null, 2), "utf8");
+  await storeSetJSON(STORE_KEYS.settings, next, SETTINGS_FILE);
   return next;
 }
 

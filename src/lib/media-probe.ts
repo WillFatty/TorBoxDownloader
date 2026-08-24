@@ -4,6 +4,7 @@ import { promises as fs } from "fs";
 import path from "path";
 import { promisify } from "util";
 import { getSettings, libraryRootFor } from "./settings";
+import { STORE_KEYS, storeGetJSON, storeSetJSON } from "./store";
 import { isRemuxActive } from "./remux-progress";
 
 const execFileAsync = promisify(execFile);
@@ -40,8 +41,11 @@ let ffprobePath: string | null | undefined;
 async function loadCache(): Promise<Record<string, CacheEntry>> {
   if (cache) return cache;
   try {
-    const raw = await fs.readFile(CACHE_FILE, "utf8");
-    cache = JSON.parse(raw) as Record<string, CacheEntry>;
+    cache =
+      (await storeGetJSON<Record<string, CacheEntry>>(
+        STORE_KEYS.probeCache,
+        CACHE_FILE,
+      )) || {};
   } catch {
     cache = {};
   }
@@ -52,8 +56,7 @@ function persistCache(): Promise<void> {
   writeChain = writeChain.then(async () => {
     if (!cache) return;
     try {
-      await fs.mkdir(path.dirname(CACHE_FILE), { recursive: true });
-      await fs.writeFile(CACHE_FILE, JSON.stringify(cache, null, 2), "utf8");
+      await storeSetJSON(STORE_KEYS.probeCache, cache, CACHE_FILE);
     } catch {
       // Cache is optional.
     }

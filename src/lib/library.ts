@@ -1,6 +1,7 @@
 import { promises as fs } from "fs";
 import path from "path";
 import { getSettings } from "./settings";
+import { STORE_KEYS, storeGetJSON, storeSetJSON } from "./store";
 import { parseEpisodeFromName } from "./episodes";
 
 const VIDEO_EXT = /\.(mkv|mp4|avi|m4v|ts|mov)$/i;
@@ -127,8 +128,10 @@ async function loadScanCache(): Promise<void> {
   if (cacheLoaded) return;
   cacheLoaded = true;
   try {
-    const raw = await fs.readFile(SCAN_CACHE_FILE, "utf8");
-    const parsed = JSON.parse(raw) as LibraryIndex | null;
+    const parsed = await storeGetJSON<LibraryIndex>(
+      STORE_KEYS.libraryCache,
+      SCAN_CACHE_FILE,
+    );
     if (
       parsed &&
       Array.isArray(parsed.movies) &&
@@ -143,9 +146,9 @@ async function loadScanCache(): Promise<void> {
 
 function saveScanCache(): void {
   if (!cachedIndex) return;
-  void fs
-    .writeFile(SCAN_CACHE_FILE, JSON.stringify(cachedIndex, null, 2), "utf8")
-    .catch(() => undefined);
+  storeSetJSON(STORE_KEYS.libraryCache, cachedIndex, SCAN_CACHE_FILE).catch(
+    () => undefined,
+  );
 }
 
 async function performScan(): Promise<LibraryIndex> {

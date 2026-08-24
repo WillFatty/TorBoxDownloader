@@ -1,5 +1,5 @@
-import { promises as fs } from "fs";
 import path from "path";
+import { STORE_KEYS, storeGetJSON, storeSetJSON } from "./store";
 
 export type RemuxStatus =
   | "queued"
@@ -35,7 +35,7 @@ function keyOf(filePath: string): string {
 async function load(): Promise<void> {
   let parsed: unknown;
   try {
-    parsed = JSON.parse(await fs.readFile(LOG_FILE, "utf8"));
+    parsed = await storeGetJSON<StoredEntry[]>(STORE_KEYS.remuxLog, LOG_FILE);
   } catch {
     return;
   }
@@ -87,8 +87,7 @@ async function save(): Promise<void> {
     .sort((a, b) => b[1].updatedAt - a[1].updatedAt)
     .map(([file, entry]) => ({ file, ...entry }));
   try {
-    await fs.mkdir(DATA_DIR, { recursive: true });
-    await fs.writeFile(LOG_FILE, JSON.stringify(list, null, 2), "utf8");
+    await storeSetJSON(STORE_KEYS.remuxLog, list, LOG_FILE);
   } catch {
     return;
   }
