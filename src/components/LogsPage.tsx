@@ -116,11 +116,9 @@ function SectionHead({
 
 function EmptyPanel({ title, hint }: { title: string; hint?: string }) {
   return (
-    <div className="panel">
-      <div className="empty-state">
-        <strong>{title}</strong>
-        {hint && <span>{hint}</span>}
-      </div>
+    <div className="log-empty">
+      <strong>{title}</strong>
+      {hint && <span>{hint}</span>}
     </div>
   );
 }
@@ -135,8 +133,8 @@ function ProgressRow({
   active: boolean;
 }) {
   return (
-    <div className="mt-3.5 flex items-center gap-3">
-      <div className="progress-track flex-1">
+    <div className="log-progress">
+      <div className="progress-track">
         <div
           className={`progress-fill ${fillClass ?? ""}`.trim()}
           style={{
@@ -179,20 +177,14 @@ function DownloadCard({
   const code = episodeCode(job);
 
   return (
-    <li className="panel p-4 sm:p-5">
-      <div className="flex flex-wrap items-start justify-between gap-x-3 gap-y-1">
-        <div className="min-w-0">
-          <div className="break-words font-semibold text-[var(--ink)]">
-            {job.fileName}
-          </div>
+    <li className={`log-card${active ? " is-live" : ""}`}>
+      <div className="log-card-top">
+        <div className="log-card-copy">
+          <div className="log-card-title">{job.fileName}</div>
           {job.episodeTitle && (
-            <div className="mt-0.5 truncate text-sm text-[var(--ink-soft)]">
-              {job.episodeTitle}
-            </div>
+            <div className="log-card-sub">{job.episodeTitle}</div>
           )}
-          <div className="mt-1 truncate font-mono text-xs text-[var(--muted)]">
-            {job.downloadPath}
-          </div>
+          <div className="log-card-path">{job.downloadPath}</div>
         </div>
         <StatusBadge tone={tone} live={active}>
           {job.status.replace(/_/g, " ")}
@@ -221,7 +213,7 @@ function DownloadCard({
 
       {job.error && <p className="log-error">{job.error}</p>}
       {job.packSummary && (
-        <p className="mt-2 text-sm text-[var(--violet)]">{job.packSummary}</p>
+        <p className="log-pack">{job.packSummary}</p>
       )}
 
       {job.savedFiles?.length > 1 && (
@@ -274,15 +266,11 @@ function RemuxCard({ entry }: { entry: RemuxLogEntry }) {
   const active = entry.status === "queued" || entry.status === "working";
 
   return (
-    <li className="panel p-4 sm:p-5">
-      <div className="flex flex-wrap items-start justify-between gap-x-3 gap-y-1">
-        <div className="min-w-0">
-          <div className="break-words font-semibold text-[var(--ink)]">
-            {entry.fileName}
-          </div>
-          <div className="mt-1 truncate font-mono text-xs text-[var(--muted)]">
-            {entry.file}
-          </div>
+    <li className={`log-card${active ? " is-live" : ""}`}>
+      <div className="log-card-top">
+        <div className="log-card-copy">
+          <div className="log-card-title">{entry.fileName}</div>
+          <div className="log-card-path">{entry.file}</div>
         </div>
         <StatusBadge tone={tone} live={active}>
           {entry.status}
@@ -413,55 +401,16 @@ export function LogsPage() {
   };
 
   return (
-    <div className="page-shell logs-shell page-enter">
-      <div className="page-header">
-        <div>
+    <div className="logs-page page-enter">
+      <header className="logs-hero">
+        <div className="logs-hero-copy">
           <p className="page-kicker">Activity</p>
           <h1 className="page-title">Logs</h1>
-          <p className="page-desc">Download queue + remuxing progress.</p>
+          <p className="page-desc">
+            Live download queue and remux progress.
+          </p>
         </div>
-      </div>
-
-      <div className="lib-stats">
-        <div className="lib-stat">
-          <span className="lib-stat-value">{activeJobs.length}</span>
-          <span className="lib-stat-label">Downloading</span>
-        </div>
-        <div className="lib-stat">
-          <span className="lib-stat-value lib-stat-speed">
-            {formatSpeed(totalSpeed) ?? "—"}
-          </span>
-          <span className="lib-stat-label">Total speed</span>
-        </div>
-        <div className="lib-stat">
-          <span className="lib-stat-value">{activeRemux}</span>
-          <span className="lib-stat-label">Remuxing</span>
-        </div>
-        <div className="lib-stat">
-          <span className="lib-stat-value">{doneJobs.length}</span>
-          <span className="lib-stat-label">Completed</span>
-        </div>
-        <div className={`lib-stat${issueJobs.length ? " lib-stat-warn" : ""}`}>
-          <span className="lib-stat-value">{issueJobs.length}</span>
-          <span className="lib-stat-label">Failed</span>
-        </div>
-      </div>
-
-      <div className="log-toolbar">
-        <div className="segmented">
-          {(Object.keys(FILTER_LABELS) as Filter[]).map((key) => (
-            <button
-              key={key}
-              type="button"
-              className={filter === key ? "is-active" : ""}
-              onClick={() => setFilter(key)}
-            >
-              {FILTER_LABELS[key]}
-              <span className="segmented-count">{FILTER_COUNTS[key]}</span>
-            </button>
-          ))}
-        </div>
-        <div className="ml-auto flex items-center gap-2">
+        <div className="logs-hero-actions">
           <button
             type="button"
             className={`chip${live ? " chip-active" : ""}`}
@@ -481,6 +430,49 @@ export function LogsPage() {
           >
             Refresh
           </button>
+        </div>
+      </header>
+
+      <div className="logs-pulse">
+        <div className="logs-pulse-item">
+          <span className="logs-pulse-value">{activeJobs.length}</span>
+          <span className="logs-pulse-label">Downloading</span>
+        </div>
+        <div className="logs-pulse-item">
+          <span className="logs-pulse-value logs-pulse-speed">
+            {formatSpeed(totalSpeed) ?? "—"}
+          </span>
+          <span className="logs-pulse-label">Total speed</span>
+        </div>
+        <div className="logs-pulse-item">
+          <span className="logs-pulse-value">{activeRemux}</span>
+          <span className="logs-pulse-label">Remuxing</span>
+        </div>
+        <div className="logs-pulse-item">
+          <span className="logs-pulse-value">{doneJobs.length}</span>
+          <span className="logs-pulse-label">Completed</span>
+        </div>
+        <div
+          className={`logs-pulse-item${issueJobs.length ? " is-warn" : ""}`}
+        >
+          <span className="logs-pulse-value">{issueJobs.length}</span>
+          <span className="logs-pulse-label">Failed</span>
+        </div>
+      </div>
+
+      <div className="log-toolbar">
+        <div className="segmented">
+          {(Object.keys(FILTER_LABELS) as Filter[]).map((key) => (
+            <button
+              key={key}
+              type="button"
+              className={filter === key ? "is-active" : ""}
+              onClick={() => setFilter(key)}
+            >
+              {FILTER_LABELS[key]}
+              <span className="segmented-count">{FILTER_COUNTS[key]}</span>
+            </button>
+          ))}
         </div>
       </div>
 
@@ -508,7 +500,7 @@ export function LogsPage() {
                 }
               />
             ) : (
-              <ul className="space-y-3">
+              <ul className="log-list">
                 {shownJobs.map((job) => (
                   <DownloadCard
                     key={job.id}
@@ -537,7 +529,7 @@ export function LogsPage() {
                 hint="Finished downloads are converted to MP4 here."
               />
             ) : (
-              <ul className="space-y-3">
+              <ul className="log-list">
                 {remuxEntries.map((entry) => (
                   <RemuxCard key={entry.file} entry={entry} />
                 ))}

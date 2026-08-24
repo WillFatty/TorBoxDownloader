@@ -25,6 +25,7 @@ export function SettingsForm() {
   const [hasKey, setHasKey] = useState(false);
   const [hasJfKey, setHasJfKey] = useState(false);
   const [msg, setMsg] = useState<string | null>(null);
+  const [msgTone, setMsgTone] = useState<"ok" | "error">("ok");
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
 
@@ -89,8 +90,10 @@ export function SettingsForm() {
         tvShowsPath: saved.tvShowsPath,
         jellyfinUrl: saved.jellyfinUrl || "",
       }));
+      setMsgTone("ok");
       setMsg("Saved.");
     } catch (err) {
+      setMsgTone("error");
       setMsg(err instanceof Error ? err.message : "Save failed");
     } finally {
       setSaving(false);
@@ -99,136 +102,222 @@ export function SettingsForm() {
 
   if (loading) {
     return (
-      <p className="px-4 py-8 text-[var(--muted)] sm:px-6">Loading…</p>
+      <div className="settings-page">
+        <p className="muted">Loading…</p>
+      </div>
     );
   }
 
   return (
-    <form onSubmit={save} className="page-shell page-enter max-w-xl">
-      <div className="page-header">
-        <div>
+    <form onSubmit={save} className="settings-page page-enter">
+      <header className="settings-hero">
+        <div className="settings-hero-copy">
           <p className="page-kicker">Config</p>
           <h1 className="page-title">Settings</h1>
           <p className="page-desc">
-            TorBox key, Comet URL, Movies / TV-Shows folders. Also set via{" "}
-            <code className="text-[var(--accent)]">.env</code>.
+            Connections, library paths, and Jellyfin. Values can also come from{" "}
+            <code className="text-accent">.env</code>.
           </p>
+        </div>
+        <div className="settings-hero-actions">
+          {msg && (
+            <p className={`settings-msg is-${msgTone}`}>{msg}</p>
+          )}
+          <button type="submit" className="btn-primary" disabled={saving}>
+            {saving ? "Saving…" : "Save settings"}
+          </button>
+        </div>
+      </header>
+
+      <div className="settings-pulse">
+        <div className={`settings-pulse-item${hasKey ? " is-ok" : ""}`}>
+          <span className="settings-pulse-dot" aria-hidden="true" />
+          <div>
+            <span className="settings-pulse-label">TorBox</span>
+            <span className="settings-pulse-value">
+              {hasKey ? "Key saved" : "Key missing"}
+            </span>
+          </div>
+        </div>
+        <div className={`settings-pulse-item${form.cometUrl ? " is-ok" : ""}`}>
+          <span className="settings-pulse-dot" aria-hidden="true" />
+          <div>
+            <span className="settings-pulse-label">Comet</span>
+            <span className="settings-pulse-value">
+              {form.cometUrl ? "URL set" : "URL missing"}
+            </span>
+          </div>
+        </div>
+        <div
+          className={`settings-pulse-item${
+            form.moviesPath && form.tvShowsPath ? " is-ok" : ""
+          }`}
+        >
+          <span className="settings-pulse-dot" aria-hidden="true" />
+          <div>
+            <span className="settings-pulse-label">Library</span>
+            <span className="settings-pulse-value">
+              {form.moviesPath && form.tvShowsPath
+                ? "Paths set"
+                : "Paths incomplete"}
+            </span>
+          </div>
+        </div>
+        <div
+          className={`settings-pulse-item${
+            form.jellyfinUrl && hasJfKey ? " is-ok" : ""
+          }`}
+        >
+          <span className="settings-pulse-dot" aria-hidden="true" />
+          <div>
+            <span className="settings-pulse-label">Jellyfin</span>
+            <span className="settings-pulse-value">
+              {form.jellyfinUrl && hasJfKey
+                ? "Connected"
+                : form.jellyfinUrl || hasJfKey
+                  ? "Partial"
+                  : "Not set"}
+            </span>
+          </div>
         </div>
       </div>
 
-      <div className="panel space-y-5 p-5 sm:p-6">
-        <label className="block space-y-2">
-          <span className="text-xs font-semibold uppercase tracking-wider text-[var(--muted)]">
-            TorBox API key{" "}
-            {hasKey && (
-              <span className="normal-case tracking-normal text-[var(--accent)]">
-                (saved — leave blank to keep)
+      <div className="settings-sections">
+        <section className="settings-section">
+          <div className="settings-section-head">
+            <h2 className="settings-section-title">Connections</h2>
+            <p className="settings-section-desc">
+              TorBox downloads and Comet stream search.
+            </p>
+          </div>
+          <div className="settings-fields">
+            <label className="settings-field">
+              <span className="settings-label">
+                TorBox API key
+                {hasKey && (
+                  <span className="settings-hint-inline">
+                    saved — leave blank to keep
+                  </span>
+                )}
               </span>
-            )}
-          </span>
-          <input
-            type="password"
-            className="field w-full"
-            value={form.torboxApiKey}
-            onChange={(e) =>
-              setForm((f) => ({ ...f, torboxApiKey: e.target.value }))
-            }
-            placeholder={hasKey ? "••••••••" : "Paste API key"}
-            autoComplete="off"
-          />
-        </label>
+              <input
+                type="password"
+                className="field"
+                value={form.torboxApiKey}
+                onChange={(e) =>
+                  setForm((f) => ({ ...f, torboxApiKey: e.target.value }))
+                }
+                placeholder={hasKey ? "••••••••" : "Paste API key"}
+                autoComplete="off"
+              />
+            </label>
 
-        <label className="block space-y-2">
-          <span className="text-xs font-semibold uppercase tracking-wider text-[var(--muted)]">
-            Comet base URL
-          </span>
-          <input
-            className="field w-full"
-            value={form.cometUrl}
-            onChange={(e) =>
-              setForm((f) => ({ ...f, cometUrl: e.target.value }))
-            }
-            placeholder="https://comet.elfhosted.com"
-          />
-        </label>
+            <label className="settings-field">
+              <span className="settings-label">Comet base URL</span>
+              <input
+                className="field"
+                value={form.cometUrl}
+                onChange={(e) =>
+                  setForm((f) => ({ ...f, cometUrl: e.target.value }))
+                }
+                placeholder="https://comet.elfhosted.com"
+              />
+            </label>
+          </div>
+        </section>
 
-        <label className="block space-y-2">
-          <span className="text-xs font-semibold uppercase tracking-wider text-[var(--muted)]">
-            Movies folder
-          </span>
-          <input
-            className="field w-full font-mono text-sm"
-            value={form.moviesPath}
-            onChange={(e) =>
-              setForm((f) => ({ ...f, moviesPath: e.target.value }))
-            }
-            placeholder="/raid/Jellyfin/Movies"
-          />
-          <span className="block text-xs text-[var(--muted)]">
-            Saves as <code>Title (Year)/Title (Year) - 1080p.mkv</code>
-          </span>
-        </label>
-
-        <label className="block space-y-2">
-          <span className="text-xs font-semibold uppercase tracking-wider text-[var(--muted)]">
-            TV-Shows folder
-          </span>
-          <input
-            className="field w-full font-mono text-sm"
-            value={form.tvShowsPath}
-            onChange={(e) =>
-              setForm((f) => ({ ...f, tvShowsPath: e.target.value }))
-            }
-            placeholder="/raid/Jellyfin/TV-Shows"
-          />
-          <span className="block text-xs text-[var(--muted)]">
-            Saves as <code>Show/Season 1/Show - S01E01 - Title.mkv</code>
-          </span>
-        </label>
-
-        <label className="block space-y-2">
-          <span className="text-xs font-semibold uppercase tracking-wider text-[var(--muted)]">
-            Jellyfin server URL
-          </span>
-          <input
-            className="field w-full"
-            value={form.jellyfinUrl}
-            onChange={(e) =>
-              setForm((f) => ({ ...f, jellyfinUrl: e.target.value }))
-            }
-            placeholder="http://jellyfin.local:8096"
-          />
-        </label>
-
-        <label className="block space-y-2">
-          <span className="text-xs font-semibold uppercase tracking-wider text-[var(--muted)]">
-            Jellyfin API key{" "}
-            {hasJfKey && (
-              <span className="normal-case tracking-normal text-[var(--accent)]">
-                (saved — leave blank to keep)
+        <section className="settings-section">
+          <div className="settings-section-head">
+            <h2 className="settings-section-title">Library paths</h2>
+            <p className="settings-section-desc">
+              Where finished downloads are filed for Jellyfin.
+            </p>
+          </div>
+          <div className="settings-fields">
+            <label className="settings-field">
+              <span className="settings-label">Movies folder</span>
+              <input
+                className="field field-mono"
+                value={form.moviesPath}
+                onChange={(e) =>
+                  setForm((f) => ({ ...f, moviesPath: e.target.value }))
+                }
+                placeholder="/raid/Jellyfin/Movies"
+              />
+              <span className="settings-hint">
+                Saves as <code>Title (Year)/Title (Year) - 1080p.mkv</code>
               </span>
-            )}
-          </span>
-          <input
-            type="password"
-            className="field w-full"
-            value={form.jellyfinApiKey}
-            onChange={(e) =>
-              setForm((f) => ({ ...f, jellyfinApiKey: e.target.value }))
-            }
-            placeholder={hasJfKey ? "••••••••" : "Dashboard → API Keys"}
-            autoComplete="off"
-          />
-          <span className="block text-xs text-[var(--muted)]">
-            Used by the Library&apos;s &quot;Refresh metadata&quot; check.
-          </span>
-        </label>
+            </label>
 
+            <label className="settings-field">
+              <span className="settings-label">TV-Shows folder</span>
+              <input
+                className="field field-mono"
+                value={form.tvShowsPath}
+                onChange={(e) =>
+                  setForm((f) => ({ ...f, tvShowsPath: e.target.value }))
+                }
+                placeholder="/raid/Jellyfin/TV-Shows"
+              />
+              <span className="settings-hint">
+                Saves as <code>Show/Season 1/Show - S01E01 - Title.mkv</code>
+              </span>
+            </label>
+          </div>
+        </section>
+
+        <section className="settings-section">
+          <div className="settings-section-head">
+            <h2 className="settings-section-title">Jellyfin</h2>
+            <p className="settings-section-desc">
+              Used by Library → Refresh metadata.
+            </p>
+          </div>
+          <div className="settings-fields">
+            <label className="settings-field">
+              <span className="settings-label">Server URL</span>
+              <input
+                className="field"
+                value={form.jellyfinUrl}
+                onChange={(e) =>
+                  setForm((f) => ({ ...f, jellyfinUrl: e.target.value }))
+                }
+                placeholder="http://jellyfin.local:8096"
+              />
+            </label>
+
+            <label className="settings-field">
+              <span className="settings-label">
+                API key
+                {hasJfKey && (
+                  <span className="settings-hint-inline">
+                    saved — leave blank to keep
+                  </span>
+                )}
+              </span>
+              <input
+                type="password"
+                className="field"
+                value={form.jellyfinApiKey}
+                onChange={(e) =>
+                  setForm((f) => ({ ...f, jellyfinApiKey: e.target.value }))
+                }
+                placeholder={hasJfKey ? "••••••••" : "Dashboard → API Keys"}
+                autoComplete="off"
+              />
+            </label>
+          </div>
+        </section>
+      </div>
+
+      <footer className="settings-foot">
+        {msg && (
+          <p className={`settings-msg is-${msgTone}`}>{msg}</p>
+        )}
         <button type="submit" className="btn-primary" disabled={saving}>
           {saving ? "Saving…" : "Save settings"}
         </button>
-        {msg && <p className="text-sm text-[var(--muted)]">{msg}</p>}
-      </div>
+      </footer>
     </form>
   );
 }

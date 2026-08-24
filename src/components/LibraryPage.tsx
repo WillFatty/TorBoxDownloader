@@ -32,21 +32,6 @@ function hasNamingIssues(entry: ArtworkEntry | undefined): boolean {
   return Boolean(entry?.namingIssues?.length);
 }
 
-function OpenArrow() {
-  return (
-    <svg className="lib-chev" viewBox="0 0 24 24" aria-hidden="true">
-      <path
-        d="M9 6l6 6-6 6"
-        fill="none"
-        stroke="currentColor"
-        strokeWidth="2"
-        strokeLinecap="round"
-        strokeLinejoin="round"
-      />
-    </svg>
-  );
-}
-
 interface JellyfinCheck {
   checkedAt: string;
   totalItems: number;
@@ -483,7 +468,6 @@ export function LibraryPage() {
                       {issues.length}
                     </span>
                   )}
-                  <OpenArrow />
                 </button>
               );
               })}
@@ -537,7 +521,6 @@ export function LibraryPage() {
                       {issues.length}
                     </span>
                   )}
-                  <OpenArrow />
                 </button>
               );
               })}

@@ -33,8 +33,8 @@ interface LibSnapshot {
   }>;
 }
 
-const TITLE_WINDOW = 10;
-const TITLE_ROTATE_MS = 6000;
+const TITLE_WINDOW = 28;
+const TITLE_ROTATE_MS = 8000;
 
 export function SearchWorkspace() {
   const [query, setQuery] = useState("");
@@ -180,7 +180,7 @@ export function SearchWorkspace() {
     const max = Math.max(...library.shows.map((s) => s.episodeCount), 1);
     return [...library.shows]
       .sort((a, b) => b.episodeCount - a.episodeCount)
-      .slice(0, 3)
+      .slice(0, 8)
       .map((s) => ({
         name: s.name,
         eps: s.episodeCount,
@@ -488,7 +488,7 @@ export function SearchWorkspace() {
       .then((r) => r.json())
       .then((d) => {
         const jobs = (d.jobs || []) as DownloadJob[];
-        setRecentJobs((prev) => (prev.length ? prev : jobs.slice(0, 5)));
+        setRecentJobs((prev) => (prev.length ? prev : jobs.slice(0, 12)));
       })
       .catch(() => {});
   }, []);
@@ -623,180 +623,189 @@ export function SearchWorkspace() {
     };
     void tick();
   }
-  return (
-    <div className="workspace page-enter">
-      <div className="workspace-toolbar">
-        <div className="shell">
-          <div className="toolbar-row">
-            <div className="toolbar-copy">
-              <h1>Find &amp; save</h1>
-              <p>Search → Comet → TorBox → Local library</p>
-            </div>
-            <form onSubmit={runSearch} className="search-form">
-              <div className="search-row">
-                <input
-                  value={query}
-                  onChange={(e) => setQuery(e.target.value)}
-                  placeholder="Ant Man, Breaking Bad… or paste a magnet link"
-                  className="field"
-                />
-                <button type="submit" className="btn-primary" disabled={searching}>
-                  {searching ? "…" : "Search"}
-                </button>
-              </div>
-              <div className="chip-row">
-                {(["all", "movie", "series"] as const).map((t) => (
-                  <button
-                    key={t}
-                    type="button"
-                    onClick={() => setTypeFilter(t)}
-                    className={`chip ${typeFilter === t ? "chip-active" : ""}`}
-                  >
-                    {t === "all" ? "All" : t === "movie" ? "Movies" : "TV"}
-                  </button>
-                ))}
-              </div>
-            </form>
-          </div>
-          {searchError && (
-            <p className="text-danger" style={{ marginTop: "0.75rem", fontSize: "0.875rem" }}>
-              {searchError}
-            </p>
-          )}
-        </div>
+  const isHome = !results.length && !selected && !searching;
+
+  const searchForm = (
+    <form onSubmit={runSearch} className="search-form">
+      <div className="search-row">
+        <input
+          value={query}
+          onChange={(e) => setQuery(e.target.value)}
+          placeholder="Ant Man, Breaking Bad… or paste a magnet link"
+          className="field"
+          autoFocus={isHome}
+        />
+        <button type="submit" className="btn-primary" disabled={searching}>
+          {searching ? "…" : "Search"}
+        </button>
       </div>
+      <div className="chip-row">
+        {(["all", "movie", "series"] as const).map((t) => (
+          <button
+            key={t}
+            type="button"
+            onClick={() => setTypeFilter(t)}
+            className={`chip ${typeFilter === t ? "chip-active" : ""}`}
+          >
+            {t === "all" ? "All" : t === "movie" ? "Movies" : "TV"}
+          </button>
+        ))}
+      </div>
+    </form>
+  );
+
+  return (
+    <div className={`workspace page-enter${isHome ? " is-home" : ""}`}>
+      {!isHome && (
+        <div className="workspace-toolbar">
+          <div className="shell">
+            <div className="toolbar-row">
+              <div className="toolbar-copy">
+                <h1>Search</h1>
+                <p>Comet streams → TorBox → library</p>
+              </div>
+              {searchForm}
+            </div>
+            {searchError && (
+              <p
+                className="text-danger"
+                style={{ marginTop: "0.75rem", fontSize: "0.875rem" }}
+              >
+                {searchError}
+              </p>
+            )}
+          </div>
+        </div>
+      )}
 
       <div className={`workspace-body${selected ? " has-selection" : ""}`}>
-        {!results.length && !selected && !searching ? (
-          <div className="pane" style={{ gridColumn: "1 / -1" }}>
-            <div className="pane-inner">
-              <div className="home-inner">
-                <section className="home-hero">
-                  <p className="page-kicker">TorBox Downloader</p>
-                  <h2>Search a title, pick a stream — it lands in your library.</h2>
-                  <p className="home-hero-sub">
-                    Comet finds the streams, TorBox caches them, and finished
-                    downloads are renamed and sorted straight into your Jellyfin
-                    folders.
+        {isHome ? (
+          <div className="home-stage">
+            <div className="home-stage-inner">
+              <header className="home-search">
+                <div className="home-search-copy">
+                  <p className="page-kicker">TorBoxDL</p>
+                  <h1>Search your next title</h1>
+                  <p className="home-search-sub">
+                    Comet finds streams · TorBox caches · files land in Jellyfin
                   </p>
-                  <div className="home-actions">
-                    <Link href="/library" className="btn-primary">
-                      Browse library
-                    </Link>
-                    <Link href="/logs" className="btn-secondary">
-                      Logs
-                    </Link>
-                  </div>
-                </section>
-
-                <div className="home-steps">
-                  {[
-                    ["Search", "Cinemeta titles — or paste a magnet link"],
-                    ["Pick", "Comet streams ranked by caching"],
-                    ["Download", "TorBox grabs it with live progress"],
-                    ["Auto-filed", "Named & sorted into Movies / Seasons"],
-                  ].map(([title, desc], i) => (
-                    <div key={title} className="home-step">
-                      <span className="home-step-num">0{i + 1}</span>
-                      <strong>{title}</strong>
-                      <span>{desc}</span>
-                    </div>
-                  ))}
                 </div>
+                {searchForm}
+                {searchError && (
+                  <p className="text-danger home-search-error">{searchError}</p>
+                )}
+              </header>
 
-                <div className="home-grid">
-                  <section className="panel home-panel">
-                    <div className="home-panel-head">
-                      <h3 className="log-section-title">In your library</h3>
-                      <Link href="/library">View all</Link>
-                    </div>
+              <section className="home-pulse">
+                <div className="home-pulse-head">
+                  <div>
+                    <h2 className="home-section-title">In your library</h2>
                     {libraryCounts ? (
-                      <>
-                        <div className="home-chips">
-                          <span className="meta-tag">
-                            {libraryCounts.movies} movie
-                            {libraryCounts.movies === 1 ? "" : "s"}
-                          </span>
-                          <span className="meta-tag">
-                            {libraryCounts.shows} show
-                            {libraryCounts.shows === 1 ? "" : "s"}
-                          </span>
-                          <span className="meta-tag">
-                            {libraryCounts.episodes} episode
-                            {libraryCounts.episodes === 1 ? "" : "s"}
-                          </span>
-                        </div>
-                        {libraryTitles.length > 0 ? (
-                          <div key={titleOffset} className="home-chips swap">
-                            {libraryTitles.map((t, i) => (
-                              <Link key={`${t}-${i}`} href="/library" className="chip">
-                                <span>{t}</span>
-                              </Link>
-                            ))}
-                          </div>
-                        ) : (
-                          <p className="muted">
-                            No media yet — check your Jellyfin paths in Settings.
-                          </p>
-                        )}
-                        {topShows.length > 0 && (
-                          <div className="home-top home-divider">
-                            <h4 className="home-subhead">Biggest shows</h4>
-                            {topShows.map((s) => (
-                              <div key={s.name} className="home-top-item">
-                                <div className="home-top-row">
-                                  <span className="home-job-name">{s.name}</span>
-                                  <span className="muted" style={{ flexShrink: 0 }}>
-                                    {s.eps} ep{s.eps === 1 ? "" : "s"}
-                                  </span>
-                                </div>
-                                <div className="progress-track">
-                                  <div
-                                    className="progress-fill"
-                                    style={{ width: `${Math.max(s.pct, 6)}%` }}
-                                  />
-                                </div>
-                              </div>
-                            ))}
-                          </div>
-                        )}
-                      </>
+                      <p className="home-pulse-stats">
+                        <strong>{libraryCounts.movies}</strong> movies
+                        <span aria-hidden="true"> · </span>
+                        <strong>{libraryCounts.shows}</strong> shows
+                        <span aria-hidden="true"> · </span>
+                        <strong>{libraryCounts.episodes}</strong> episodes
+                      </p>
                     ) : (
-                      <p className="muted">Loading library…</p>
+                      <p className="muted home-pulse-stats">Loading library…</p>
                     )}
-                  </section>
+                  </div>
+                  <Link href="/library" className="btn-secondary btn-small">
+                    Browse library
+                  </Link>
+                </div>
+                {libraryTitles.length > 0 ? (
+                  <div key={titleOffset} className="home-title-cloud swap">
+                    {libraryTitles.map((t, i) => (
+                      <Link
+                        key={`${t}-${i}`}
+                        href="/library"
+                        className="home-title-chip"
+                      >
+                        {t}
+                      </Link>
+                    ))}
+                  </div>
+                ) : libraryCounts ? (
+                  <p className="muted">
+                    No media yet — check your Jellyfin paths in Settings.
+                  </p>
+                ) : null}
+              </section>
 
-                  <section className="panel home-panel">
-                    <div className="home-panel-head">
-                      <h3 className="log-section-title">Recent downloads</h3>
-                      <Link href="/logs">View all</Link>
-                    </div>
-                    {recentJobs.length > 0 ? (
-                      <ul className="home-jobs">
-                        {recentJobs.slice(0, 5).map((job) => (
-                          <li key={job.id} className="home-job">
-                            <div className="home-job-row">
-                              <span className="home-job-name">{job.fileName}</span>
-                              <span className="muted" style={{ flexShrink: 0 }}>
-                                {formatStatus(job.status)} · {job.progress}%
+              <div className="home-columns">
+                <section className="home-column">
+                  <div className="home-column-head">
+                    <h2 className="home-section-title">Biggest shows</h2>
+                  </div>
+                  {topShows.length > 0 ? (
+                    <ul className="home-rank">
+                      {topShows.map((s, i) => (
+                        <li key={s.name} className="home-rank-item">
+                          <span className="home-rank-num">
+                            {String(i + 1).padStart(2, "0")}
+                          </span>
+                          <div className="home-rank-main">
+                            <div className="home-rank-row">
+                              <span className="home-job-name">{s.name}</span>
+                              <span className="home-rank-meta">
+                                {s.eps} ep{s.eps === 1 ? "" : "s"}
                               </span>
                             </div>
                             <div className="progress-track">
                               <div
                                 className="progress-fill"
-                                style={{ width: `${job.progress}%` }}
+                                style={{ width: `${Math.max(s.pct, 6)}%` }}
                               />
                             </div>
-                          </li>
-                        ))}
-                      </ul>
-                    ) : (
-                      <p className="muted">
-                        No downloads yet — start one with the search above.
-                      </p>
-                    )}
-                  </section>
-                </div>
+                          </div>
+                        </li>
+                      ))}
+                    </ul>
+                  ) : (
+                    <p className="muted">No TV shows in the library yet.</p>
+                  )}
+                </section>
+
+                <section className="home-column">
+                  <div className="home-column-head">
+                    <h2 className="home-section-title">Recent activity</h2>
+                    <Link href="/logs">View logs</Link>
+                  </div>
+                  {recentJobs.length > 0 ? (
+                    <ul className="home-activity">
+                      {recentJobs.slice(0, 10).map((job) => (
+                        <li key={job.id} className="home-activity-item">
+                          <div className="home-activity-row">
+                            <span className="home-job-name" title={job.fileName}>
+                              {job.fileName}
+                            </span>
+                            <span className="home-activity-status">
+                              {formatStatus(job.status)}
+                              {job.progress > 0 && job.progress < 100
+                                ? ` · ${job.progress}%`
+                                : ""}
+                            </span>
+                          </div>
+                          <div className="progress-track">
+                            <div
+                              className="progress-fill"
+                              style={{
+                                width: `${Math.max(job.progress, 2)}%`,
+                              }}
+                            />
+                          </div>
+                        </li>
+                      ))}
+                    </ul>
+                  ) : (
+                    <p className="muted">
+                      No downloads yet — search a title to get started.
+                    </p>
+                  )}
+                </section>
               </div>
             </div>
           </div>

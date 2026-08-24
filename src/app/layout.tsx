@@ -1,16 +1,16 @@
 import type { Metadata } from "next";
-import { Syne, Manrope, JetBrains_Mono } from "next/font/google";
+import { Outfit, Plus_Jakarta_Sans, JetBrains_Mono } from "next/font/google";
 import { ClientNav } from "@/components/ClientNav";
 import { ActivityNotifier } from "@/components/ActivityNotifier";
 import "./app.css";
 
-const display = Syne({
+const display = Outfit({
   variable: "--font-display",
   subsets: ["latin"],
   weight: ["500", "600", "700", "800"],
 });
 
-const body = Manrope({
+const body = Plus_Jakarta_Sans({
   variable: "--font-body",
   subsets: ["latin"],
   weight: ["400", "500", "600", "700"],
