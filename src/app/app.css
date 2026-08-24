@@ -1793,151 +1793,7 @@ body {
   cursor: not-allowed;
 }
 
-/* —— Remux progress —— */
-.remux-backdrop {
-  z-index: 70;
-  background: rgba(3, 6, 5, 0.8);
-}
-
-.remux-modal {
-  display: flex;
-  flex-direction: column;
-  width: 100%;
-  max-width: 28rem;
-  max-height: min(80dvh, 34rem);
-  border: 1px solid var(--line-strong);
-  border-radius: var(--radius-lg);
-  background: var(--bg-elevated);
-  box-shadow: 0 40px 90px -30px rgba(0, 0, 0, 0.85);
-  padding: 1.25rem 1.35rem;
-  animation: fade-up 0.24s ease-out both;
-}
-
-.remux-title {
-  margin: 0;
-  font-size: 0.72rem;
-  font-weight: 700;
-  letter-spacing: 0.08em;
-  text-transform: uppercase;
-  color: var(--accent);
-}
-
-.remux-sub {
-  margin: 0.3rem 0 0.9rem;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-  font-size: 0.95rem;
-  font-weight: 600;
-  color: var(--ink);
-}
-
-.remux-progress {
-  display: flex;
-  align-items: center;
-  gap: 0.75rem;
-}
-
-.remux-progress .progress-track {
-  flex: 1;
-}
-
-.remux-count {
-  flex-shrink: 0;
-  font-size: 0.78rem;
-  color: var(--ink-soft);
-  font-variant-numeric: tabular-nums;
-}
-
-.remux-files {
-  display: flex;
-  flex-direction: column;
-  margin: 0.9rem 0 0;
-  border-top: 1px solid var(--line);
-  padding: 0;
-  list-style: none;
-  overflow-y: auto;
-}
-
-.remux-file {
-  display: flex;
-  align-items: center;
-  gap: 0.55rem;
-  border-bottom: 1px solid var(--line);
-  padding: 0.45rem 0.1rem;
-  font-size: 0.8rem;
-}
-
-.remux-file.is-pending {
-  color: var(--muted);
-}
-
-.remux-file.is-working {
-  color: var(--ink);
-}
-
-.remux-file-icon {
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  flex-shrink: 0;
-  width: 1rem;
-  height: 1rem;
-  font-size: 0.78rem;
-  line-height: 1;
-  color: var(--muted);
-}
-
-.remux-file.is-done .remux-file-icon,
-.remux-file.is-done .remux-file-state {
-  color: var(--accent);
-}
-
-.remux-file.is-failed .remux-file-icon,
-.remux-file.is-failed .remux-file-state {
-  color: var(--danger);
-}
-
-.remux-file-name {
-  flex: 1;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-}
-
-.remux-file-state {
-  flex-shrink: 0;
-  font-size: 0.65rem;
-  font-weight: 700;
-  letter-spacing: 0.05em;
-  text-transform: uppercase;
-  color: var(--muted);
-}
-
-.remux-phase {
-  margin: 0.55rem 0 0;
-  font-size: 0.72rem;
-  letter-spacing: 0.03em;
-  color: var(--muted);
-}
-
-.remux-file-bar {
-  position: relative;
-  flex: 0 0 28%;
-  height: 0.25rem;
-  overflow: hidden;
-  border-radius: 999px;
-  background: var(--line);
-}
-
-.remux-file-fill {
-  display: block;
-  height: 100%;
-  border-radius: inherit;
-  background: linear-gradient(90deg, var(--accent-dim), var(--accent));
-  transition: width 0.3s ease;
-}
-
+/* —— Remux spinner (shared) —— */
 @keyframes remux-rotate {
   to {
     transform: rotate(360deg);
@@ -2542,4 +2398,142 @@ code {
 *::-webkit-scrollbar-thumb {
   background: var(--line-strong);
   border-radius: 4px;
+}
+
+/* —— Activity dock (bottom-right live status) —— */
+.activity-dock {
+  position: fixed;
+  right: 1rem;
+  bottom: 1rem;
+  z-index: 80;
+  width: min(22rem, calc(100vw - 2rem));
+  border: 1px solid var(--line-strong);
+  border-radius: var(--radius);
+  background: var(--panel);
+  box-shadow:
+    0 24px 48px -18px rgba(0, 0, 0, 0.75),
+    0 0 0 1px rgba(46, 230, 168, 0.05);
+  overflow: hidden;
+  animation: fade-up 0.22s ease-out both;
+}
+
+.activity-head {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  width: 100%;
+  border: 0;
+  background: transparent;
+  padding: 0.6rem 0.85rem;
+  color: var(--ink);
+  font-family: inherit;
+  font-size: 0.72rem;
+  font-weight: 700;
+  letter-spacing: 0.07em;
+  text-transform: uppercase;
+  text-align: left;
+  cursor: pointer;
+}
+
+.activity-head:hover {
+  background: var(--panel-hover);
+}
+
+.activity-dot {
+  flex-shrink: 0;
+  width: 0.5rem;
+  height: 0.5rem;
+  border-radius: 999px;
+  background: var(--accent);
+  box-shadow: 0 0 8px var(--accent-glow);
+  animation: activity-pulse 1.6s ease-in-out infinite;
+}
+
+@keyframes activity-pulse {
+  0%,
+  100% {
+    opacity: 1;
+  }
+  50% {
+    opacity: 0.3;
+  }
+}
+
+.activity-title {
+  flex: 1;
+}
+
+.activity-chevron {
+  font-size: 0.65rem;
+  color: var(--muted);
+}
+
+.activity-list {
+  margin: 0;
+  padding: 0;
+  list-style: none;
+  max-height: min(38dvh, 17rem);
+  overflow-y: auto;
+  border-top: 1px solid var(--line);
+}
+
+.activity-item {
+  padding: 0.6rem 0.85rem 0.7rem;
+}
+
+.activity-item + .activity-item {
+  border-top: 1px solid var(--line);
+}
+
+.activity-line {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 0.75rem;
+  margin-bottom: 0.4rem;
+}
+
+.activity-name {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-size: 0.8rem;
+  font-weight: 600;
+  color: var(--ink);
+}
+
+.activity-pct {
+  flex-shrink: 0;
+  font-family: var(--font-mono), monospace;
+  font-size: 0.72rem;
+  color: var(--accent);
+}
+
+.activity-bar {
+  height: 0.3rem;
+  border-radius: 999px;
+  background: var(--line);
+  overflow: hidden;
+  margin-bottom: 0.45rem;
+}
+
+.activity-bar span {
+  display: block;
+  height: 100%;
+  border-radius: inherit;
+  background: linear-gradient(90deg, var(--accent-dim), var(--accent));
+  transition: width 0.35s ease;
+}
+
+.activity-sub {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 0.75rem;
+  font-family: var(--font-mono), monospace;
+  font-size: 0.66rem;
+  letter-spacing: 0.02em;
+  color: var(--muted);
 }

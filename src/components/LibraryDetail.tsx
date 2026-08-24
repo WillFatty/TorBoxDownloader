@@ -17,28 +17,6 @@ import {
 
 const RESOLUTION = /\b(2160p|1080p|720p|480p|4k)\b/i;
 
-type RemuxItemStatus =
-  | "pending"
-  | "working"
-  | "done"
-  | "failed"
-  | "skipped";
-
-interface RemuxItem {
-  path: string;
-  name: string;
-  status: RemuxItemStatus;
-  percent: number;
-}
-
-interface RemuxSession {
-  kind: "en-only" | "en-subs";
-  title: string;
-  items: RemuxItem[];
-  error: string | null;
-  running: boolean;
-}
-
 const REMUX_ENDPOINT = {
   "en-only": "/api/library/english-only",
   "en-subs": "/api/library/english-subs",
@@ -158,109 +136,6 @@ function LangTags({
         </>
       )}
     </span>
-  );
-}
-
-function RemuxProgressModal({
-  session,
-  onClose,
-}: {
-  session: RemuxSession;
-  onClose: () => void;
-}) {
-  const total = session.items.length;
-  const finished = session.items.filter(
-    (item) => item.status === "done" || item.status === "failed",
-  ).length;
-  const percent = total
-    ? Math.round(
-        session.items.reduce((sum, item) => sum + item.percent, 0) / total,
-      )
-    : 0;
-
-  return createPortal(
-    <div
-      className="lib-modal-backdrop remux-backdrop"
-      role="dialog"
-      aria-modal="true"
-      aria-label={REMUX_LABEL[session.kind]}
-      onClick={(e) => {
-        if (e.target === e.currentTarget && !session.running) onClose();
-      }}
-    >
-      <div className="remux-modal">
-        <h3 className="remux-title">{REMUX_LABEL[session.kind]}</h3>
-        <p className="remux-sub">{session.title}</p>
-
-        <div className="remux-progress">
-          <div className="progress-track">
-            <div
-              className="progress-fill"
-              style={{ width: `${percent}%` }}
-            />
-          </div>
-          <span className="remux-count">{percent}%</span>
-        </div>
-        {total > 1 && (
-          <p className="remux-phase">
-            {finished}/{total} files · {session.running ? "in progress" : "finished"}
-          </p>
-        )}
-
-        {session.error && (
-          <p className="lib-naming-error">{session.error}</p>
-        )}
-
-        <ul className="remux-files">
-          {session.items.map((item) => (
-            <li key={item.path} className={`remux-file is-${item.status}`}>
-              <span className="remux-file-icon" aria-hidden="true">
-                {item.status === "done" ? (
-                  "✓"
-                ) : item.status === "failed" ? (
-                  "✕"
-                ) : item.status === "working" ? (
-                  <span className="remux-spin" />
-                ) : null}
-              </span>
-              <span className="remux-file-name">{item.name}</span>
-              {item.status === "working" && item.percent > 0 && (
-                <span className="remux-file-bar">
-                  <span
-                    className="remux-file-fill"
-                    style={{ width: `${item.percent}%` }}
-                  />
-                </span>
-              )}
-              <span className="remux-file-state">
-                {item.status === "pending"
-                  ? "Queued"
-                  : item.status === "working"
-                    ? item.percent > 0
-                      ? `${item.percent}%`
-                      : "Remuxing…"
-                    : item.status === "done"
-                      ? "Done"
-                      : item.status === "skipped"
-                        ? "Skipped"
-                        : "Failed"}
-              </span>
-            </li>
-          ))}
-        </ul>
-
-        {!session.running && (
-          <button
-            type="button"
-            className="btn-secondary remux-close"
-            onClick={onClose}
-          >
-            Close
-          </button>
-        )}
-      </div>
-    </div>,
-    document.body,
   );
 }
 
@@ -458,7 +333,6 @@ export function LibraryDetail({
   const [enBusy, setEnBusy] = useState<string | null>(null);
   const [enStatus, setEnStatus] = useState<string | null>(null);
   const [enError, setEnError] = useState<string | null>(null);
-  const [remux, setRemux] = useState<RemuxSession | null>(null);
   const [jfBusy, setJfBusy] = useState(false);
   const [jfStatus, setJfStatus] = useState<string | null>(null);
   const [jfError, setJfError] = useState<string | null>(null);
@@ -634,18 +508,6 @@ export function LibraryDetail({
 
     setEnError(null);
     setEnStatus(null);
-    setRemux({
-      kind,
-      title: name,
-      items: targets.map((file) => ({
-        path: file,
-        name: file.replace(/\\/g, "/").split("/").pop() || file,
-        status: "pending",
-        percent: 0,
-      })),
-      error: null,
-      running: true,
-    });
     setEnBusy(targets[0]);
 
     // Hand the batch to the server queue and return immediately — ffmpeg runs
@@ -663,20 +525,6 @@ export function LibraryDetail({
       setEnBusy(null);
       setEnStatus(null);
       setEnError(message);
-      setRemux((prev) =>
-        prev
-          ? {
-              ...prev,
-              items: prev.items.map((item) =>
-                item.status === "pending" || item.status === "working"
-                  ? { ...item, status: "failed" }
-                  : item,
-              ),
-              error: message,
-              running: false,
-            }
-          : prev,
-      );
       return;
     }
 
@@ -730,48 +578,6 @@ export function LibraryDetail({
                 "Lost contact with the remux queue (server may have restarted)";
             }
 
-            setRemux((prev) => {
-              if (!prev?.running) return prev;
-              const items = prev.items.map((item) => {
-                if (
-                  item.status === "done" ||
-                  item.status === "failed" ||
-                  item.status === "skipped"
-                ) {
-                  return item;
-                }
-                if (timedOut && !progress[item.path]) {
-                  return { ...item, status: "failed" as const, percent: 100 };
-                }
-                const entry = progress[item.path];
-                if (!entry) return item;
-                if (
-                  entry.status === "done" ||
-                  entry.status === "skipped" ||
-                  entry.status === "failed"
-                ) {
-                  return {
-                    ...item,
-                    status: entry.status as RemuxItemStatus,
-                    percent: 100,
-                  };
-                }
-                const remotePercent = Math.max(0, entry.percent ?? 0);
-                if (
-                  remotePercent > item.percent ||
-                  (remotePercent > 0 && item.status === "pending")
-                ) {
-                  return {
-                    ...item,
-                    status: "working" as const,
-                    percent: Math.max(item.percent, remotePercent),
-                  };
-                }
-                return item;
-              });
-              return { ...prev, items };
-            });
-
             if (finished) {
               window.clearInterval(poll);
               resolve();
@@ -790,12 +596,10 @@ export function LibraryDetail({
 
     void refreshLangs(targets);
     setEnBusy(null);
-    setRemux((prev) => (prev ? { ...prev, running: false } : prev));
 
     if (failureSummary) {
       setEnStatus(null);
       setEnError(failureSummary);
-      setRemux((prev) => (prev ? { ...prev, error: failureSummary } : prev));
     } else {
       setEnStatus(
         targets.length === 1
@@ -832,15 +636,11 @@ export function LibraryDetail({
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
       if (e.key !== "Escape") return;
-      if (!remux) {
-        onClose();
-        return;
-      }
-      if (!remux.running) setRemux(null);
+      onClose();
     };
     window.addEventListener("keydown", onKey);
     return () => window.removeEventListener("keydown", onKey);
-  }, [onClose, remux]);
+  }, [onClose]);
 
   useEffect(() => {
     const previous = document.body.style.overflow;
@@ -881,10 +681,23 @@ export function LibraryDetail({
   const activeGroup =
     seasonGroups.find((g) => g.season === activeSeason) ?? seasonGroups[0];
 
-  const seasonRemuxActive = Boolean(
-    activeGroup?.eps.some(
-      (ep) => ep.path && activePercentFor(ep.path) !== null,
-    ),
+  const showPaths = useMemo(
+    () =>
+      isShow
+        ? [
+            ...new Set(
+              seasonGroups.flatMap((g) =>
+                g.eps
+                  .map((ep) => ep.path)
+                  .filter((p): p is string => Boolean(p)),
+              ),
+            ),
+          ]
+        : [],
+    [isShow, seasonGroups],
+  );
+  const showRemuxActive = Boolean(
+    showPaths.some((p) => activePercentFor(p) !== null),
   );
   const movieRemuxActive = probeFiles.some(
     (p) => activePercentFor(p) !== null,
@@ -923,12 +736,9 @@ export function LibraryDetail({
           role="dialog"
           aria-modal="true"
           aria-label={name}
-      onClick={(e) => {
-        if (e.target === e.currentTarget && !remux?.running) {
-          if (remux) setRemux(null);
-          else onClose();
-        }
-      }}
+          onClick={(e) => {
+            if (e.target === e.currentTarget) onClose();
+          }}
         >
           <div className="lib-modal">
             <button
@@ -1068,13 +878,43 @@ export function LibraryDetail({
                         ))}
                       </div>
                     )}
-                    {seasonRemuxActive ? (
+                    {showRemuxActive ? (
                       <span className="lib-detail-tag is-remuxing">
                         <span className="remux-spin" aria-hidden="true" />
                         Remuxing…
                       </span>
                     ) : (
                       <>
+                        {seasonGroups.length > 1 &&
+                          showPaths.some((p) =>
+                            needsEnglishOnly(langsFor(p)),
+                          ) && (
+                            <button
+                              type="button"
+                              className="btn-secondary lib-en-btn-season"
+                              disabled={Boolean(enBusy)}
+                              onClick={() => void runRemux("en-only", showPaths)}
+                            >
+                              {enBusy
+                                ? "Remuxing…"
+                                : "English only (all seasons)"}
+                            </button>
+                          )}
+                        {seasonGroups.length > 1 &&
+                          showPaths.some((p) =>
+                            needsEnglishSubsOnly(langsFor(p)),
+                          ) && (
+                            <button
+                              type="button"
+                              className="btn-secondary lib-en-btn-season"
+                              disabled={Boolean(enBusy)}
+                              onClick={() => void runRemux("en-subs", showPaths)}
+                            >
+                              {enBusy
+                                ? "Remuxing…"
+                                : "English subs (all seasons)"}
+                            </button>
+                          )}
                         {activeGroup.eps.some((ep) =>
                           needsEnglishOnly(langsFor(ep.path)),
                         ) && (
@@ -1275,9 +1115,6 @@ export function LibraryDetail({
           </div>
         </div>,
         document.body,
-      )}
-      {remux && (
-        <RemuxProgressModal session={remux} onClose={() => setRemux(null)} />
       )}
     </>
   );

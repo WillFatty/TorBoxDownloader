@@ -144,7 +144,7 @@ async function loadScanCache(): Promise<void> {
 function saveScanCache(): void {
   if (!cachedIndex) return;
   void fs
-    .writeFile(SCAN_CACHE_FILE, JSON.stringify(cachedIndex), "utf8")
+    .writeFile(SCAN_CACHE_FILE, JSON.stringify(cachedIndex, null, 2), "utf8")
     .catch(() => undefined);
 }
 

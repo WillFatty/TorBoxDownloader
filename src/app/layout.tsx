@@ -1,6 +1,7 @@
 import type { Metadata } from "next";
 import { Syne, Manrope, JetBrains_Mono } from "next/font/google";
 import { ClientNav } from "@/components/ClientNav";
+import { ActivityNotifier } from "@/components/ActivityNotifier";
 import "./app.css";
 
 const display = Syne({
@@ -40,6 +41,7 @@ export default function RootLayout({
         <div className="app-frame">
           <ClientNav />
           <main className="app-main">{children}</main>
+          <ActivityNotifier />
         </div>
       </body>
     </html>

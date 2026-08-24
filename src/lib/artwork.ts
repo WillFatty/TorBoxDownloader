@@ -60,7 +60,7 @@ function persistCache(): Promise<void> {
     if (!cache) return;
     try {
       await fs.mkdir(path.dirname(CACHE_FILE), { recursive: true });
-      await fs.writeFile(CACHE_FILE, JSON.stringify(cache), "utf8");
+      await fs.writeFile(CACHE_FILE, JSON.stringify(cache, null, 2), "utf8");
     } catch {
       // An unwritable cache only costs repeat lookups, never correctness.
     }
