@@ -12,7 +12,7 @@ function authSecret(): string {
 }
 
 export function getConfiguredPassword(): string {
-  return process.env.SITE_PASSWORD?.trim() || "";
+  return process.env.SITE_PASSWORD?.trim() || "password";
 }
 
 export function passwordsMatch(input: string, expected: string): boolean {

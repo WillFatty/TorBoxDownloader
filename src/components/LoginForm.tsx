@@ -7,13 +7,10 @@ import { readJson } from "./LibraryShared";
 export function LoginForm() {
   const router = useRouter();
   const params = useSearchParams();
-  const setup = params.get("setup") === "1";
   const next = params.get("next") || "/";
 
   const [password, setPassword] = useState("");
-  const [error, setError] = useState<string | null>(
-    setup ? "Set SITE_PASSWORD in .env, then restart the server." : null,
-  );
+  const [error, setError] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
 
   async function onSubmit(e: FormEvent) {
@@ -105,7 +102,6 @@ export function LoginForm() {
               onChange={(e) => setPassword(e.target.value)}
               autoFocus
               autoComplete="current-password"
-              disabled={setup}
             />
           </label>
           {error && <p className="text-danger" style={{ margin: 0, fontSize: "0.875rem" }}>{error}</p>}
@@ -113,7 +109,7 @@ export function LoginForm() {
             type="submit"
             className="btn-primary"
             style={{ width: "100%" }}
-            disabled={loading || setup || !password}
+            disabled={loading || !password}
           >
             {loading ? "Checking…" : "Enter"}
           </button>

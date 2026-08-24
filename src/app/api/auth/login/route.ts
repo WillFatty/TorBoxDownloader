@@ -8,12 +8,6 @@ import {
 
 export async function POST(request: Request) {
   const expected = getConfiguredPassword();
-  if (!expected) {
-    return NextResponse.json(
-      { error: "SITE_PASSWORD not set in .env" },
-      { status: 503 },
-    );
-  }
 
   let password = "";
   try {

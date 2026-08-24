@@ -57,20 +57,6 @@ export async function middleware(request: NextRequest) {
     return NextResponse.next();
   }
 
-  const password = process.env.SITE_PASSWORD?.trim();
-  if (!password) {
-    if (pathname.startsWith("/api/")) {
-      return NextResponse.json(
-        { error: "Set SITE_PASSWORD in .env" },
-        { status: 401 },
-      );
-    }
-    const url = request.nextUrl.clone();
-    url.pathname = "/login";
-    url.searchParams.set("setup", "1");
-    return NextResponse.redirect(url);
-  }
-
   const token = request.cookies.get(COOKIE)?.value;
   if (await verifyToken(token)) {
     return NextResponse.next();
