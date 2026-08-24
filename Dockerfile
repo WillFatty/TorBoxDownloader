@@ -27,7 +27,7 @@ RUN apt-get update \
 WORKDIR /app
 
 # Production dependencies only (the server bundle externalizes them).
-COPY --from=deps /app/package.json ./package.json
+COPY --from=deps /app/package.json /app/package-lock.json ./
 RUN npm ci --omit=dev && npm cache clean --force
 
 # Built SPA + server bundle.
