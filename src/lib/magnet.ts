@@ -28,8 +28,14 @@ const EP_MARKERS: RegExp[] = [
   /\bSeason[ ._-]*\d{1,2}[ ._-]*Episode[ ._-]*\d{1,3}\b/i,
 ];
 
+// Season markers without an episode number ("S01.COMPLETE", "Season 2").
+const SEASON_MARKERS: RegExp[] = [
+  /\b[Ss]\d{1,2}(?![A-Za-z\d])(?![Ee]\d)/,
+  /\bSeason[ ._-]*\d{1,2}(?![ ._-]*Episode)/i,
+];
+
 const NOISE_RE =
-  /\b(2160p|1080p|1080i|720p|480p|360p|4k|uhd|hdr10?|hdr\+|dv|dolby[ ._-]?vision|remux|bluray|blu-ray|bdrip|brrip|web[ ._-]?dl|webdl|webrip|hdtv|dvdrip|dvd|x264|x265|h\.?264|h\.?265|hevc|avc|xvid|aac|ac3|eac3|ddp|dts(-hd)?|truehd|atmos|flac|mp3|10bit|8bit|hi10p?|proper|repack|extended|unrated|remastered|internal|limited|wide?screen|multi|dual[ ._-]?audio|imi?ax|amzn|nf|netflix|atvp|dsnp|hulu|pcok|max|tubi|pdtv|aac2[ ._]0|2[ ._]0|5[ ._]1|7[ ._]1)\b/gi;
+  /\b(2160p|1080p|1080i|720p|480p|360p|4k|uhd|hdr10?|hdr\+|dv|dolby[ ._-]?vision|remux|bluray|blu-ray|bdrip|brrip|web[ ._-]?dl|webdl|webrip|hdtv|dvdrip|dvd|x264|x265|h\.?264|h\.?265|hevc|avc|xvid|aac|ac3|eac3|ddp|dts(-hd)?|truehd|atmos|flac|mp3|10bit|8bit|hi10p?|proper|repack|extended|unrated|remastered|internal|limited|wide?screen|multi|dual[ ._-]?audio|complete|imi?ax|amzn|nf|netflix|atvp|dsnp|hulu|pcok|max|tubi|pdtv|aac2[ ._]0|2[ ._]0|5[ ._]1|7[ ._]1)\b/gi;
 
 export interface CleanedTorrentTitle {
   title: string;
@@ -57,14 +63,26 @@ export function cleanTorrentTitle(displayName: string): CleanedTorrentTitle {
       }
     }
   }
-  for (const re of EP_MARKERS) text = text.replace(new RegExp(re.source, "gi"), " ");
+  if (season == null) {
+    // Season pack / no episode number ("Show.S01.COMPLETE").
+    for (let i = 0; i < SEASON_MARKERS.length && season == null; i++) {
+      const m = text.match(SEASON_MARKERS[i]);
+      if (!m) continue;
+      const s = Number.parseInt((m[0].match(/\d+/g) || [])[0] ?? "", 10);
+      if (Number.isFinite(s)) season = s;
+    }
+  }
+  for (const re of [...EP_MARKERS, ...SEASON_MARKERS])
+    text = text.replace(new RegExp(re.source, "gi"), " ");
 
-  // Release year: only trust it when two year-like tokens exist
-  // (title year + release year), so titles like "1917" stay intact.
+  // Release year: trust a lone year-like token when it's clearly a series
+  // (season/episode markers present), otherwise require two year tokens so
+  // titles like "1917" or "2049" stay intact.
   const yearMatches = [...text.matchAll(/\b(19\d{2}|20\d{2})\b/g)];
   let year: string | null = null;
   const lastYear = yearMatches[yearMatches.length - 1];
-  if (yearMatches.length >= 2 && lastYear?.[1]) {
+  const trustSingleYear = lastYear != null && (season != null || episode != null);
+  if (lastYear?.[1] && (yearMatches.length >= 2 || trustSingleYear)) {
     year = lastYear[1];
     const idx = lastYear.index;
     if (idx != null) {
@@ -77,6 +95,8 @@ export function cleanTorrentTitle(displayName: string): CleanedTorrentTitle {
   text = text.replace(/\.[a-z0-9]{2,4}\b\s*$/i, " ");
   text = text.replace(/[._]+/g, " ");
   text = text.replace(/\s{2,}/g, " ").trim();
+  // Trailing release-group tag ("x264-NTG" after the codec is stripped).
+  text = text.replace(/\s+-[A-Za-z0-9]{1,}$/, "");
   text = text.replace(/^[\s\-–—:;,[({]+|[\s\-–—:;,)\]}]+$/g, "").trim();
 
   return { title: text, season, episode, year };
@@ -124,6 +144,9 @@ export function bestSearchMatch(
   for (const hit of results) {
     let score = titleScore(cleaned.title, hit.name);
     if (cleaned.year && hit.year === cleaned.year) score += 15;
+    // A torrent with S/E markers is essentially never a movie.
+    if ((cleaned.season != null || cleaned.episode != null) && hit.type === "series")
+      score += 10;
     if (!best || score > best.score) best = { hit, score };
   }
   if (!best || best.score < 45) return null;
