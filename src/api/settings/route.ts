@@ -15,6 +15,7 @@ export async function PUT(request: Request) {
       tvShowsPath?: string;
       jellyfinUrl?: string;
       jellyfinApiKey?: string;
+      omdbApiKey?: string;
     };
 
     const partial: {
@@ -24,6 +25,7 @@ export async function PUT(request: Request) {
       tvShowsPath?: string;
       jellyfinUrl?: string;
       jellyfinApiKey?: string;
+      omdbApiKey?: string;
     } = {};
 
     if (typeof body.cometUrl === "string") partial.cometUrl = body.cometUrl;
@@ -47,6 +49,13 @@ export async function PUT(request: Request) {
       !body.jellyfinApiKey.includes("•")
     ) {
       partial.jellyfinApiKey = body.jellyfinApiKey;
+    }
+    if (
+      typeof body.omdbApiKey === "string" &&
+      body.omdbApiKey.trim() &&
+      !body.omdbApiKey.includes("•")
+    ) {
+      partial.omdbApiKey = body.omdbApiKey;
     }
 
     const settings = await saveSettings(partial);

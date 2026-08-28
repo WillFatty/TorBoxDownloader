@@ -10,6 +10,7 @@ interface SettingsView {
   jellyfinUrl: string;
   hasTorboxApiKey: boolean;
   hasJellyfinApiKey: boolean;
+  hasOmdbApiKey: boolean;
 }
 
 export function SettingsForm() {
@@ -20,9 +21,11 @@ export function SettingsForm() {
     tvShowsPath: "",
     jellyfinUrl: "",
     jellyfinApiKey: "",
+    omdbApiKey: "",
   });
   const [hasKey, setHasKey] = useState(false);
   const [hasJfKey, setHasJfKey] = useState(false);
+  const [hasOmdbKey, setHasOmdbKey] = useState(false);
   const [msg, setMsg] = useState<string | null>(null);
   const [msgTone, setMsgTone] = useState<"ok" | "error">("ok");
   const [loading, setLoading] = useState(true);
@@ -43,9 +46,11 @@ export function SettingsForm() {
         tvShowsPath: s.tvShowsPath || "",
         jellyfinUrl: s.jellyfinUrl || "",
         jellyfinApiKey: "",
+        omdbApiKey: "",
       });
       setHasKey(s.hasTorboxApiKey);
       setHasJfKey(s.hasJellyfinApiKey);
+      setHasOmdbKey(s.hasOmdbApiKey);
       setLoading(false);
     })();
   }, []);
@@ -69,6 +74,9 @@ export function SettingsForm() {
           ...(form.jellyfinApiKey.trim()
             ? { jellyfinApiKey: form.jellyfinApiKey.trim() }
             : {}),
+          ...(form.omdbApiKey.trim()
+            ? { omdbApiKey: form.omdbApiKey.trim() }
+            : {}),
         }),
       });
       const data = await readJson<{
@@ -81,10 +89,12 @@ export function SettingsForm() {
       const saved = data.settings;
       setHasKey(saved.hasTorboxApiKey);
       setHasJfKey(saved.hasJellyfinApiKey);
+      setHasOmdbKey(saved.hasOmdbApiKey);
       setForm((f) => ({
         ...f,
         torboxApiKey: "",
         jellyfinApiKey: "",
+        omdbApiKey: "",
         moviesPath: saved.moviesPath,
         tvShowsPath: saved.tvShowsPath,
         jellyfinUrl: saved.jellyfinUrl || "",
@@ -179,6 +189,18 @@ export function SettingsForm() {
             </span>
           </div>
         </div>
+        <div
+          className={`settings-pulse-item${hasOmdbKey ? " is-ok" : ""}`}
+          title="Optional — adds Rotten Tomatoes and Metacritic scores"
+        >
+          <span className="settings-pulse-dot" aria-hidden="true" />
+          <div>
+            <span className="settings-pulse-label">Reviews</span>
+            <span className="settings-pulse-value">
+              {hasOmdbKey ? "RT + Metacritic" : "IMDb only"}
+            </span>
+          </div>
+        </div>
       </div>
 
       <div className="settings-sections">
@@ -221,6 +243,42 @@ export function SettingsForm() {
                 }
                 placeholder="https://comet.elfhosted.com"
               />
+            </label>
+
+            <label className="settings-field">
+              <span className="settings-label">
+                OMDb API key
+                {hasOmdbKey ? (
+                  <span className="settings-hint-inline">
+                    saved — leave blank to keep
+                  </span>
+                ) : (
+                  <span className="settings-hint-inline">optional</span>
+                )}
+              </span>
+              <input
+                type="password"
+                className="field"
+                value={form.omdbApiKey}
+                onChange={(e) =>
+                  setForm((f) => ({ ...f, omdbApiKey: e.target.value }))
+                }
+                placeholder={
+                  hasOmdbKey ? "••••••••" : "Adds Rotten Tomatoes + Metacritic"
+                }
+                autoComplete="off"
+              />
+              <span className="settings-hint">
+                Free key from{" "}
+                <a
+                  href="https://www.omdbapi.com/apikey.aspx"
+                  target="_blank"
+                  rel="noreferrer"
+                >
+                  omdbapi.com
+                </a>
+                . IMDb rating shows without it.
+              </span>
             </label>
           </div>
         </section>

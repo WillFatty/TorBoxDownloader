@@ -21,6 +21,7 @@ import * as libraryFix from "@/api/library/fix/route";
 import * as libraryProbe from "@/api/library/probe/route";
 import * as magnet from "@/api/magnet/route";
 import * as meta from "@/api/meta/route";
+import * as ratings from "@/api/ratings/route";
 import * as remux from "@/api/remux/route";
 import * as search from "@/api/search/route";
 import * as settings from "@/api/settings/route";
@@ -85,6 +86,7 @@ export function createApp(distDir: string) {
     { path: "/api/library/probe", mod: libraryProbe },
     { path: "/api/magnet", mod: magnet },
     { path: "/api/meta", mod: meta },
+    { path: "/api/ratings", mod: ratings },
     { path: "/api/remux", mod: remux },
     { path: "/api/search", mod: search },
     { path: "/api/settings", mod: settings },

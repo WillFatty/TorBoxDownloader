@@ -1,7 +1,7 @@
 
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { createPortal } from "react-dom";
-import type { MediaMeta } from "@/lib/types";
+import type { MediaMeta, MediaRatings } from "@/lib/types";
 import type { RemuxLogEntry } from "@/lib/remux-progress";
 import {
   hueStyle,
@@ -382,6 +382,7 @@ export function LibraryDetail({
   jellyfinConfigured?: boolean;
 }) {
   const [meta, setMeta] = useState<MediaMeta | null>(null);
+  const [ratings, setRatings] = useState<MediaRatings | null>(null);
   const [season, setSeason] = useState<number | null>(null);
   const [langs, setLangs] = useState<Record<string, MediaLanguages>>({});
   const [enBusy, setEnBusy] = useState<string | null>(null);
@@ -725,6 +726,25 @@ export function LibraryDetail({
     };
   }, [imdbId, isShow]);
 
+  useEffect(() => {
+    if (!imdbId) {
+      setRatings(null);
+      return;
+    }
+    let cancelled = false;
+    void fetch(
+      `/api/ratings?type=${isShow ? "series" : "movie"}&id=${encodeURIComponent(imdbId)}`,
+    )
+      .then((r) => r.json())
+      .then((d) => {
+        if (!cancelled && d.ratings) setRatings(d.ratings as MediaRatings);
+      })
+      .catch(() => {});
+    return () => {
+      cancelled = true;
+    };
+  }, [imdbId, isShow]);
+
   const seasonGroups = useMemo(
     () => (isShow ? groupBySeason(selection.show.episodes) : []),
     [isShow, selection],
@@ -874,6 +894,34 @@ export function LibraryDetail({
                       </span>
                     ))}
                   </div>
+                  {ratings?.scores.length ? (
+                    <div className="score-row lib-hero-ratings">
+                      {ratings.scores.map((score) => (
+                        <a
+                          key={score.source}
+                          href={score.url}
+                          target="_blank"
+                          rel="noreferrer"
+                          className={`score-chip score-chip--${score.source
+                            .toLowerCase()
+                            .replace(/[^a-z]+/g, "-")}`}
+                          title={score.url}
+                        >
+                          <span className="score-chip-source">
+                            <span>{score.source}</span>
+                          </span>
+                          <span className="score-chip-value">
+                            {score.value}
+                          </span>
+                        </a>
+                      ))}
+                    </div>
+                  ) : null}
+                  {ratings?.summary ? (
+                    <p className="score-summary lib-hero-summary">
+                      {ratings.summary}
+                    </p>
+                  ) : null}
                 </div>
               </div>
             </div>

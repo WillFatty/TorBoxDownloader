@@ -4,6 +4,7 @@ import { useEffect, useMemo, useState } from "react";
 import type {
   DownloadJob,
   MediaMeta,
+  MediaRatings,
   MediaType,
   SearchResult,
   StreamResult,
@@ -45,6 +46,7 @@ export function SearchWorkspace() {
 
   const [selected, setSelected] = useState<SearchResult | null>(null);
   const [meta, setMeta] = useState<MediaMeta | null>(null);
+  const [ratings, setRatings] = useState<MediaRatings | null>(null);
   const [season, setSeason] = useState(1);
   const [episode, setEpisode] = useState(1);
 
@@ -338,6 +340,7 @@ export function SearchWorkspace() {
     setSortBy("quality");
     setCacheError(null);
     setCacheChecked(false);
+    setRatings(null);
 
     const res = await fetch(
       `/api/meta?type=${item.type}&id=${encodeURIComponent(item.imdbId)}`,
@@ -365,6 +368,15 @@ export function SearchWorkspace() {
     } else {
       setMeta(null);
     }
+
+    void fetch(
+      `/api/ratings?type=${item.type}&id=${encodeURIComponent(item.imdbId)}`,
+    )
+      .then((r) => r.json())
+      .then((d) => {
+        if (d.ratings) setRatings(d.ratings as MediaRatings);
+      })
+      .catch(() => {});
 
     if (opts?.presetStream) {
       setStreams([opts.presetStream]);
@@ -900,6 +912,37 @@ export function SearchWorkspace() {
                     <p className="muted" style={{ margin: "0.4rem 0 0", fontSize: "0.875rem" }}>
                       {selected.year} · {selected.imdbId}
                     </p>
+                    {ratings?.scores.length ? (
+                      <div className="score-row" style={{ marginTop: "0.6rem" }}>
+                        {ratings.scores.map((score) => (
+                          <a
+                            key={score.source}
+                            href={score.url}
+                            target="_blank"
+                            rel="noreferrer"
+                            className={`score-chip score-chip--${score.source
+                              .toLowerCase()
+                              .replace(/[^a-z]+/g, "-")}`}
+                            title={score.url}
+                          >
+                            <span className="score-chip-source">
+                              <span>{score.source}</span>
+                            </span>
+                            <span className="score-chip-value">
+                              {score.value}
+                            </span>
+                          </a>
+                        ))}
+                      </div>
+                    ) : null}
+                    {ratings?.summary ? (
+                      <p
+                        className="score-summary"
+                        style={{ margin: "0.5rem 0 0" }}
+                      >
+                        {ratings.summary}
+                      </p>
+                    ) : null}
                     {ownedMovie && (
                       <p className="text-info" style={{ margin: "0.5rem 0 0", fontSize: "0.875rem" }}>
                         Already in library ({ownedMovie.fileCount} file

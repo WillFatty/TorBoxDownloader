@@ -138,4 +138,5 @@ export const STORE_KEYS = {
   probeCache: "tbd:media-probe-cache",
   remuxLog: "tbd:remux-log",
   libraryCache: "tbd:library-cache",
+  ratingsCache: "tbd:ratings-cache",
 } as const;

@@ -25,6 +25,7 @@ const defaults = (): AppSettings => ({
       : path.join(path.sep, "raid", "Jellyfin", "TV-Shows")),
   jellyfinUrl: (process.env.JELLYFIN_URL?.trim() || "").replace(/\/$/, ""),
   jellyfinApiKey: process.env.JELLYFIN_API_KEY?.trim() ?? "",
+  omdbApiKey: process.env.OMDB_API_KEY?.trim() ?? "",
 });
 
 function migratePaths(saved: Partial<AppSettings> & { downloadPath?: string }): {
@@ -106,6 +107,7 @@ export async function getSettings(): Promise<AppSettings> {
       "",
     ),
     jellyfinApiKey: saved.jellyfinApiKey?.trim() || base.jellyfinApiKey,
+    omdbApiKey: saved.omdbApiKey?.trim() || base.omdbApiKey,
   };
 }
 
@@ -138,6 +140,10 @@ export async function saveSettings(
       partial.jellyfinApiKey !== undefined
         ? partial.jellyfinApiKey.trim()
         : current.jellyfinApiKey,
+    omdbApiKey:
+      partial.omdbApiKey !== undefined
+        ? partial.omdbApiKey.trim()
+        : current.omdbApiKey,
   };
   await storeSetJSON(STORE_KEYS.settings, next, SETTINGS_FILE);
   return next;
@@ -153,6 +159,7 @@ export function libraryRootFor(
 export function maskSettings(settings: AppSettings) {
   const key = settings.torboxApiKey;
   const jfKey = settings.jellyfinApiKey;
+  const omdbKey = settings.omdbApiKey;
   return {
     ...settings,
     torboxApiKey: key
@@ -163,5 +170,9 @@ export function maskSettings(settings: AppSettings) {
       ? `${jfKey.slice(0, 4)}${"•".repeat(Math.max(0, jfKey.length - 8))}${jfKey.slice(-4)}`
       : "",
     hasJellyfinApiKey: Boolean(jfKey),
+    omdbApiKey: omdbKey
+      ? `${omdbKey.slice(0, 4)}${"•".repeat(Math.max(0, omdbKey.length - 8))}${omdbKey.slice(-4)}`
+      : "",
+    hasOmdbApiKey: Boolean(omdbKey),
   };
 }

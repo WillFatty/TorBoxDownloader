@@ -58,6 +58,18 @@ export interface AppSettings {
   jellyfinUrl: string;
   /** Jellyfin API token (Dashboard → API Keys) */
   jellyfinApiKey: string;
+  /** Optional OMDb API key (https://www.omdbapi.com/apikey.aspx) */
+  omdbApiKey: string;
+}
+
+/** Aggregate review/award scores for a title, keyed by source. */
+export interface MediaRatings {
+  /** Normalized subjects fetched so far (imdb, rotten_tomatoes, metacritic). */
+  sources: string[];
+  /** List of scores for rendering, e.g. [{ source: "IMDb", value: "7.2" }]. */
+  scores: Array<{ source: string; value: string; url?: string }>;
+  /** Aggregate "score blender" description when available (e.g. Cinemeta awards). */
+  summary?: string;
 }
 
 export type DownloadStatus =
