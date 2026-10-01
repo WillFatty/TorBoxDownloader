@@ -21,6 +21,15 @@ export function serializeCookie(
   return parts.join("; ");
 }
 
+/** True when the browser connection is HTTPS, including behind a reverse proxy. */
+export function requestIsHttps(request: Request): boolean {
+  const forwarded = request.headers.get("x-forwarded-proto");
+  if (forwarded) {
+    return forwarded.split(",")[0]?.trim().toLowerCase() === "https";
+  }
+  return new URL(request.url).protocol === "https:";
+}
+
 export function sessionSetCookie(token: string, secure: boolean): string {
   return serializeCookie(AUTH_COOKIE, token, {
     maxAge: 60 * 60 * 24 * 14,

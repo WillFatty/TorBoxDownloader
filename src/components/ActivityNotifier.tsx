@@ -48,16 +48,19 @@ export function ActivityNotifier() {
   useEffect(() => {
     let cancelled = false;
     const pull = () => {
-      Promise.all([
-        fetch("/api/downloads").then((r) => r.json()),
-        fetch("/api/remux").then((r) => r.json()),
-      ])
-        .then(([d, r]) => {
+      Promise.all([fetch("/api/downloads"), fetch("/api/remux")])
+        .then(async ([downloadsRes, remuxRes]) => {
           if (cancelled) return;
-          setJobs(Array.isArray(d?.jobs) ? (d.jobs as DownloadJob[]) : []);
-          setRemuxes(
-            Array.isArray(r?.entries) ? (r.entries as RemuxEntry[]) : [],
-          );
+          if (downloadsRes.status === 401 || remuxRes.status === 401) {
+            const next = `${window.location.pathname}${window.location.search}`;
+            window.location.assign(`/login?next=${encodeURIComponent(next)}`);
+            return;
+          }
+          const d = (await downloadsRes.json()) as { jobs?: DownloadJob[] };
+          const r = (await remuxRes.json()) as { entries?: RemuxEntry[] };
+          if (cancelled) return;
+          setJobs(Array.isArray(d?.jobs) ? d.jobs : []);
+          setRemuxes(Array.isArray(r?.entries) ? r.entries : []);
         })
         .catch(() => {});
     };

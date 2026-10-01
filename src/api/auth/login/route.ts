@@ -4,7 +4,7 @@ import {
   getConfiguredPassword,
   passwordsMatch,
 } from "@/lib/auth";
-import { sessionSetCookie } from "@/server/http";
+import { requestIsHttps, sessionSetCookie } from "@/server/http";
 
 export async function POST(request: Request) {
   const expected = getConfiguredPassword();
@@ -26,10 +26,7 @@ export async function POST(request: Request) {
     status: 200,
     headers: {
       "content-type": "application/json",
-      "set-cookie": sessionSetCookie(
-        token,
-        process.env.NODE_ENV === "production",
-      ),
+      "set-cookie": sessionSetCookie(token, requestIsHttps(request)),
     },
   });
 }
