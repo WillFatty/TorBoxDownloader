@@ -15,5 +15,5 @@ services:
       - ./data:/app/data
       # Host library folder → /raid inside the container (matches MOVIES_PATH / TV_SHOWS_PATH)
       # Example: host /raid2 mounted as container /raid → set LIBRARY_ROOT=/raid2 in .env
-      - ${LIBRARY_ROOT:-/raid}:/raid
+      - ${LIBRARY_ROOT:-/raid2}:/raid2
     user: "1000:1000"

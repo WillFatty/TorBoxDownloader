@@ -1,0 +1,188 @@
+{
+    "_comment": "TorBox Downloader Pterodactyl egg. Import via Admin -> Nests -> Import Egg. scripts.installation.script is a copy of pterodactyl/install.sh. The panel cannot declare mounts; host /raid2 must be a Wings allowed mount and a panel mount with target /raid2 so MOVIES_PATH and TV_SHOWS_PATH work.",
+    "meta": {
+        "version": "PTDL_v2",
+        "update_url": "https://raw.githubusercontent.com/WillFatty/TorBoxDownloader/main/pterodactyl/egg.json"
+    },
+    "exported_at": "2026-10-01T00:00:00+00:00",
+    "name": "TorBox Downloader",
+    "author": "willfatty@users.noreply.github.com",
+    "description": "Search movies/TV, pull streams from Comet, and download them with TorBox into a Jellyfin library. The container must bind-mount the Wings host path /raid2 to /raid2 (read-write) or MOVIES_PATH and TV_SHOWS_PATH cannot see the library. The Node 22 yolk includes ffmpeg. Set the node UID/GID to 1000/1000 so downloads can be written to the CIFS share.",
+    "features": null,
+    "docker_images": {
+        "ghcr.io/ptero-eggs/yolks:nodejs_22": "ghcr.io/ptero-eggs/yolks:nodejs_22"
+    },
+    "file_denylist": [
+        ".git",
+        "node_modules"
+    ],
+    "startup": "bash pterodactyl/start.sh",
+    "config": {
+        "files": "{}",
+        "startup": "{\n    \"done\": \"listening on\"\n}",
+        "logs": "{\n    \"lines\": 150\n}",
+        "stop": "^C"
+    },
+    "scripts": {
+        "installation": {
+            "container": "ghcr.io/ptero-eggs/yolks:nodejs_22",
+            "entrypoint": "bash",
+            "script": "#!/bin/bash\n#\n# TorBox Downloader installation script.\n#\n# This file is the source of truth. pterodactyl/egg.json embeds the same\n# script under scripts.installation.script (the panel stores it inline).\n#\n# Wings runs this as root in the installer container. Server files are\n# bind-mounted at /mnt/server, which becomes /home/container at runtime.\n# Custom mounts such as /raid2 are not available here, so this script never\n# touches MOVIES_PATH or TV_SHOWS_PATH.\n#\nset -euo pipefail\n\ncd /mnt/server\n\ngit config --global --add safe.directory /mnt/server\n\nGIT_ADDRESS=\"${GIT_ADDRESS:-https://github.com/WillFatty/TorBoxDownloader.git}\"\nGIT_BRANCH=\"${GIT_BRANCH:-main}\"\nif [[ \"${GIT_ADDRESS}\" != *.git ]]; then\n  GIT_ADDRESS=\"${GIT_ADDRESS}.git\"\nfi\n\necho \"Node $(node -v) | npm $(npm -v)\"\necho \"ffmpeg: $(command -v ffmpeg || echo MISSING) | ffprobe: $(command -v ffprobe || echo MISSING)\"\n\nif [ -d .git ]; then\n  echo \"Updating ${GIT_ADDRESS} (${GIT_BRANCH})...\"\n  if git fetch --depth 1 origin \"+refs/heads/${GIT_BRANCH}:refs/remotes/origin/${GIT_BRANCH}\"; then\n    git reset --hard \"origin/${GIT_BRANCH}\"\n  else\n    git fetch --depth 1 origin \"refs/tags/${GIT_BRANCH}\"\n    git reset --hard FETCH_HEAD\n  fi\nelse\n  shopt -s nullglob dotglob\n  existing=(*)\n  shopt -u nullglob dotglob\n  if [ \"${#existing[@]}\" -gt 0 ]; then\n    echo \"ERROR: /mnt/server is not empty and has no .git directory.\"\n    echo \"Reinstall only works on a fresh server or an existing checkout of this repo.\"\n    exit 1\n  fi\n  echo \"Cloning ${GIT_ADDRESS} (${GIT_BRANCH})...\"\n  git clone --depth 1 --branch \"${GIT_BRANCH}\" \"${GIT_ADDRESS}\" .\nfi\n\n# Reinstall must rebuild code without deleting app state. data/ is gitignored.\nrm -rf node_modules dist dist-server\n\n# The egg sets NODE_ENV=production, which would make npm ci skip vite/esbuild.\necho \"Installing dependencies...\"\nnpm ci --include=dev --no-audit --no-fund\n\necho \"Building SPA (dist) and server bundle (dist-server)...\"\nnpm run build\n\n# The server process runs as the node's UID/GID (set this to 1000/1000 so it\n# can write the CIFS library on /raid2), not as root.\nmkdir -p data\nchmod 777 data\nchmod -R a+rX dist dist-server public node_modules package.json package-lock.json pterodactyl/start.sh\n\necho \"Install complete. Start the server and open the allocated port.\"\n"
+        }
+    },
+    "variables": [
+        {
+            "name": "Git repository",
+            "description": "Repository cloned on install. Reinstall fetches this branch again and leaves data/ in place.",
+            "env_variable": "GIT_ADDRESS",
+            "default_value": "https://github.com/WillFatty/TorBoxDownloader",
+            "user_viewable": true,
+            "user_editable": true,
+            "rules": "required|string|max:255"
+        },
+        {
+            "name": "Git branch",
+            "description": "Branch or tag to clone. Use a tag when you want reinstall to pin a release.",
+            "env_variable": "GIT_BRANCH",
+            "default_value": "main",
+            "user_viewable": true,
+            "user_editable": true,
+            "rules": "required|string|max:64"
+        },
+        {
+            "name": "TorBox API Key",
+            "description": "From https://torbox.app/settings. Required for downloads and the TorBox cache badges.",
+            "env_variable": "TORBOX_API_KEY",
+            "default_value": "",
+            "user_viewable": true,
+            "user_editable": true,
+            "rules": "required|string|min:8|max:255"
+        },
+        {
+            "name": "Site Password",
+            "description": "Password for the web UI login page.",
+            "env_variable": "SITE_PASSWORD",
+            "default_value": "",
+            "user_viewable": true,
+            "user_editable": true,
+            "rules": "required|string|min:8|max:255"
+        },
+        {
+            "name": "Movies Path",
+            "description": "Movie library folder as seen inside the container. Host /raid2 is mounted at /raid2, so this is the host path, e.g. /raid2/Jellyfin/Movies.",
+            "env_variable": "MOVIES_PATH",
+            "default_value": "/raid2/Jellyfin/Movies",
+            "user_viewable": true,
+            "user_editable": true,
+            "rules": "required|string|regex:#^/[A-Za-z0-9._/-]*$#"
+        },
+        {
+            "name": "TV Shows Path",
+            "description": "Series library folder as seen inside the container. Host /raid2 is mounted at /raid2, so this is the host path, e.g. /raid2/Jellyfin/TV-Shows.",
+            "env_variable": "TV_SHOWS_PATH",
+            "default_value": "/raid2/Jellyfin/TV-Shows",
+            "user_viewable": true,
+            "user_editable": true,
+            "rules": "required|string|regex:#^/[A-Za-z0-9._/-]*$#"
+        },
+        {
+            "name": "Comet URL",
+            "description": "Comet instance base URL, no trailing slash. Public instances rate-limit; self-host for heavy use.",
+            "env_variable": "COMET_URL",
+            "default_value": "https://comet.elfhosted.com",
+            "user_viewable": true,
+            "user_editable": true,
+            "rules": "nullable|string|max:255"
+        },
+        {
+            "name": "OMDb API Key",
+            "description": "Optional, free at https://www.omdbapi.com/apikey.aspx. Adds Rotten Tomatoes and Metacritic scores. The IMDb rating shows without it.",
+            "env_variable": "OMDB_API_KEY",
+            "default_value": "",
+            "user_viewable": true,
+            "user_editable": true,
+            "rules": "nullable|string|max:255"
+        },
+        {
+            "name": "Jellyfin URL",
+            "description": "Optional. Jellyfin base URL used for metadata pushes and library refreshes.",
+            "env_variable": "JELLYFIN_URL",
+            "default_value": "",
+            "user_viewable": true,
+            "user_editable": true,
+            "rules": "nullable|string|max:255"
+        },
+        {
+            "name": "Jellyfin API Key",
+            "description": "Optional. Jellyfin API key for the URL above.",
+            "env_variable": "JELLYFIN_API_KEY",
+            "default_value": "",
+            "user_viewable": true,
+            "user_editable": true,
+            "rules": "nullable|string|max:255"
+        },
+        {
+            "name": "Storage Backend",
+            "description": "Where settings, jobs, and caches live: redis or file. file writes JSON under /home/container/data.",
+            "env_variable": "STORAGE_BACKEND",
+            "default_value": "redis",
+            "user_viewable": true,
+            "user_editable": true,
+            "rules": "required|in:redis,file"
+        },
+        {
+            "name": "Redis Host",
+            "description": "Redis host. Used when STORAGE_BACKEND=redis.",
+            "env_variable": "REDIS_HOST",
+            "default_value": "192.168.0.208",
+            "user_viewable": true,
+            "user_editable": true,
+            "rules": "nullable|string|max:255"
+        },
+        {
+            "name": "Redis Port",
+            "description": "Redis port. Used when STORAGE_BACKEND=redis.",
+            "env_variable": "REDIS_PORT",
+            "default_value": "6379",
+            "user_viewable": true,
+            "user_editable": true,
+            "rules": "nullable|integer|min:1|max:65535"
+        },
+        {
+            "name": "Redis Password",
+            "description": "Optional Redis password.",
+            "env_variable": "REDIS_PASSWORD",
+            "default_value": "",
+            "user_viewable": true,
+            "user_editable": true,
+            "rules": "nullable|string|max:255"
+        },
+        {
+            "name": "Redis URL",
+            "description": "Optional full URL. Takes precedence over host/port/password (redis://user:pass@host:6379).",
+            "env_variable": "REDIS_URL",
+            "default_value": "",
+            "user_viewable": true,
+            "user_editable": true,
+            "rules": "nullable|string|max:255"
+        },
+        {
+            "name": "Auth Secret",
+            "description": "Optional. Separate cookie signing secret. Defaults to SITE_PASSWORD.",
+            "env_variable": "AUTH_SECRET",
+            "default_value": "",
+            "user_viewable": false,
+            "user_editable": true,
+            "rules": "nullable|string|max:255"
+        },
+        {
+            "name": "Node Environment",
+            "description": "Keep this at production. The built SPA is only served in production mode.",
+            "env_variable": "NODE_ENV",
+            "default_value": "production",
+            "user_viewable": false,
+            "user_editable": true,
+            "rules": "required|in:production"
+        }
+    ]
+}

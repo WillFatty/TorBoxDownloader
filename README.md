@@ -50,6 +50,10 @@ docker compose down
 docker compose up -d --build   # rebuild after code changes
 ```
 
+## Pterodactyl
+
+Egg files are in [`pterodactyl/`](pterodactyl/README.md). The server container has to see the Wings host directory `/raid2` (bind-mounted at `/raid2`) so `MOVIES_PATH` and `TV_SHOWS_PATH` can point at the Jellyfin library, for example `/raid2/Jellyfin/Movies`. Wings will skip that mount until `/raid2` is listed in `allowed_mounts` and the mount is enabled on the server. The node UID/GID must be **1000/1000** to match the CIFS share.
+
 ## Local development
 
 1. Copy env:
