@@ -57,9 +57,10 @@ echo "Building SPA (dist) and server bundle (dist-server)..."
 npm run build
 
 # The server process runs as the node's UID/GID (set this to 1000/1000 so it
-# can write the CIFS library on /raid2), not as root.
+# can write the CIFS library on /raid2), not as root. Startup also git-pulls
+# and rebuilds as that user, so the whole checkout has to be writable.
 mkdir -p data
+chmod -R a+rwX .
 chmod 777 data
-chmod -R a+rX dist dist-server public node_modules package.json package-lock.json pterodactyl/start.sh
 
 echo "Install complete. Start the server and open the allocated port."

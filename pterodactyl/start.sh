@@ -33,5 +33,38 @@ for dir in "${MOVIES_PATH:-}" "${TV_SHOWS_PATH:-}"; do
   fi
 done
 
+# Match GitHub on every start. data/ is gitignored and is left in place.
+# Rebuild only when the commit changed so an unchanged restart stays fast.
+if [ -d .git ]; then
+  GIT_ADDRESS="${GIT_ADDRESS:-https://github.com/WillFatty/TorBoxDownloader.git}"
+  GIT_BRANCH="${GIT_BRANCH:-main}"
+  if [[ "${GIT_ADDRESS}" != *.git ]]; then
+    GIT_ADDRESS="${GIT_ADDRESS}.git"
+  fi
+
+  echo "Updating ${GIT_ADDRESS} (${GIT_BRANCH})..."
+  git -c safe.directory=/home/container remote set-url origin "${GIT_ADDRESS}"
+  before="$(git -c safe.directory=/home/container rev-parse HEAD)"
+
+  if git -c safe.directory=/home/container fetch --depth 1 origin "+refs/heads/${GIT_BRANCH}:refs/remotes/origin/${GIT_BRANCH}"; then
+    git -c safe.directory=/home/container reset --hard "origin/${GIT_BRANCH}"
+  else
+    git -c safe.directory=/home/container fetch --depth 1 origin "refs/tags/${GIT_BRANCH}"
+    git -c safe.directory=/home/container reset --hard FETCH_HEAD
+  fi
+
+  after="$(git -c safe.directory=/home/container rev-parse HEAD)"
+  if [ "${before}" = "${after}" ]; then
+    echo "Already at ${after}."
+  else
+    echo "Updated ${before} -> ${after}. Rebuilding..."
+    rm -rf node_modules dist dist-server
+    npm ci --include=dev --no-audit --no-fund
+    npm run build
+  fi
+else
+  echo "No git checkout; starting the installed build. Reinstall to enable GitHub updates."
+fi
+
 export PORT="${SERVER_PORT:-3000}"
 exec node dist-server/index.js

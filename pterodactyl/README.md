@@ -108,9 +108,14 @@ will not follow this mount until they are updated to `/raid2/Jellyfin/...`.
 
 ## State and updates
 
-App state stays under `/home/container/data` (or in Redis). Reinstall fetches
-`GIT_BRANCH`, rebuilds `node_modules`, `dist`, and `dist-server`, and does not
-delete `data/`.
+App state stays under `/home/container/data` (or in Redis). Every start fetches
+`GIT_BRANCH` from GitHub and hard-resets the checkout to match it. `data/` is
+gitignored, so it is left in place. If the commit changed, startup runs
+`npm ci` and `npm run build` before Node starts. An unchanged commit skips the
+rebuild.
+
+Re-import this egg and reinstall once so the checkout is writable by the
+container user. After that, a normal restart is enough to pick up new commits.
 
 The web UI is password-protected plain HTTP. Put the allocation behind your
 reverse proxy. Remux and library probes run ffmpeg; 1 vCPU and about 1 GB is
