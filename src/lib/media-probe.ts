@@ -1,4 +1,5 @@
 import { execFile } from "child_process";
+import { availableParallelism } from "os";
 import { createRequire } from "module";
 import { promises as fs } from "fs";
 import path from "path";
@@ -315,7 +316,7 @@ export async function probeManyMediaLanguages(
   if (!(await isFfprobeAvailable())) return out;
 
   const unique = [...new Set(filePaths.map((p) => path.resolve(p)))];
-  const concurrency = 3;
+  const concurrency = Math.max(1, availableParallelism());
   let cursor = 0;
 
   async function worker() {
