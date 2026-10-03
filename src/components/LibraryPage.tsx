@@ -109,6 +109,8 @@ export function LibraryPage() {
   const [jfBusy, setJfBusy] = useState(false);
   const [jfResult, setJfResult] = useState<JellyfinCheck | null>(null);
   const [jfConfigured, setJfConfigured] = useState(true);
+  const [scanBusy, setScanBusy] = useState(false);
+  const [scanNote, setScanNote] = useState<string | null>(null);
 
   function posterFor(key: string): string | null {
     return brokenArt[key] ? null : art[key]?.poster ?? null;
@@ -158,6 +160,7 @@ export function LibraryPage() {
   async function refreshMetadata() {
     setJfBusy(true);
     setJfResult(null);
+    setScanNote(null);
     try {
       const res = await fetch("/api/jellyfin/metadata", { method: "POST" });
       const data = await readJson<JellyfinCheck & { error?: string }>(res);
@@ -167,6 +170,23 @@ export function LibraryPage() {
       setError(err instanceof Error ? err.message : "Jellyfin check failed");
     } finally {
       setJfBusy(false);
+    }
+  }
+
+  async function scanAllLibraries() {
+    setScanBusy(true);
+    setJfResult(null);
+    setScanNote(null);
+    setError(null);
+    try {
+      const res = await fetch("/api/jellyfin/scan", { method: "POST" });
+      const data = await readJson<{ error?: string }>(res);
+      if (!res.ok) throw new Error(data.error || "Library scan failed");
+      setScanNote("Jellyfin is scanning all libraries.");
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Library scan failed");
+    } finally {
+      setScanBusy(false);
     }
   }
 
@@ -322,25 +342,46 @@ export function LibraryPage() {
         </div>
         <div className="page-actions">
           {jfConfigured && (
-            <button
-              type="button"
-              className="btn-secondary"
-              disabled={jfBusy || loading}
-              onClick={() => void refreshMetadata()}
-            >
-              {jfBusy ? "Checking…" : "Refresh metadata"}
-            </button>
+            <>
+              <button
+                type="button"
+                className="btn-secondary"
+                disabled={jfBusy || scanBusy || loading}
+                onClick={() => void refreshMetadata()}
+              >
+                {jfBusy ? "Checking…" : "Refresh metadata"}
+              </button>
+              <button
+                type="button"
+                className="btn-secondary"
+                title="Ask Jellyfin to scan every library"
+                disabled={jfBusy || scanBusy || loading}
+                onClick={() => void scanAllLibraries()}
+              >
+                {scanBusy ? "Scanning…" : "Scan all libraries"}
+              </button>
+            </>
           )}
           <button
             type="button"
             className="btn-secondary"
-            disabled={loading}
+            disabled={loading || scanBusy || jfBusy}
             onClick={() => void load(true)}
           >
             {loading ? "Scanning…" : "Rescan"}
           </button>
         </div>
       </div>
+
+      {scanNote && (
+        <div className="jf-card is-ok">
+          <div className="jf-card-head">
+            <span className="status-dot" aria-hidden="true" />
+            <strong>Jellyfin library scan</strong>
+          </div>
+          <p className="jf-card-summary">{scanNote}</p>
+        </div>
+      )}
 
       <JellyfinCard result={jfResult} busy={jfBusy} />
 

@@ -14,6 +14,7 @@ import * as downloadRetry from "@/api/downloads/[id]/retry/route";
 import * as filename from "@/api/filename/route";
 import * as jellyfinMetadata from "@/api/jellyfin/metadata/route";
 import * as jellyfinRefresh from "@/api/jellyfin/refresh/route";
+import * as jellyfinScan from "@/api/jellyfin/scan/route";
 import * as library from "@/api/library/route";
 import * as libraryEnglishOnly from "@/api/library/english-only/route";
 import * as libraryEnglishSubs from "@/api/library/english-subs/route";
@@ -79,6 +80,7 @@ export function createApp(distDir: string) {
     { path: "/api/filename", mod: filename },
     { path: "/api/jellyfin/metadata", mod: jellyfinMetadata },
     { path: "/api/jellyfin/refresh", mod: jellyfinRefresh },
+    { path: "/api/jellyfin/scan", mod: jellyfinScan },
     { path: "/api/library", mod: library },
     { path: "/api/library/english-only", mod: libraryEnglishOnly },
     { path: "/api/library/english-subs", mod: libraryEnglishSubs },
