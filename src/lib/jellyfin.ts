@@ -17,45 +17,67 @@ export function isJellyfinConfigured(settings: AppSettings): boolean {
   return Boolean(settings.jellyfinUrl?.trim() && settings.jellyfinApiKey?.trim());
 }
 
+/** Current Jellyfin auth scheme. Avoid X-Emby-Token — Jellyfin 12+ rejects it. */
 function authHeaders(apiKey: string): HeadersInit {
-  return { "X-Emby-Token": apiKey };
+  return {
+    Authorization: `MediaBrowser Client="TorBoxDownloader", Device="Server", DeviceId="torbox-downloader", Version="0.1.0", Token="${apiKey}"`,
+  };
 }
 
-async function jellyfinFetch<T>(
+function jellyfinUrl(
+  settings: AppSettings,
+  path: string,
+): { base: string; url: string; apiKey: string } {
+  const base = settings.jellyfinUrl.trim().replace(/\/$/, "");
+  const apiKey = settings.jellyfinApiKey.trim();
+  if (!base) throw new JellyfinError("Jellyfin URL is not set");
+  if (!apiKey) throw new JellyfinError("Jellyfin API key is not set");
+
+  // api_key query survives reverse proxies that strip Authorization.
+  const sep = path.includes("?") ? "&" : "?";
+  return {
+    base,
+    apiKey,
+    url: `${base}${path}${sep}api_key=${encodeURIComponent(apiKey)}`,
+  };
+}
+
+function elevationHint(status?: number): string {
+  if (status === 401 || status === 403) {
+    return " — use an API key created by a Jellyfin admin account";
+  }
+  return "";
+}
+
+async function jellyfinRequest(
   settings: AppSettings,
   path: string,
   init?: RequestInit & { timeoutMs?: number },
-): Promise<T> {
-  const base = settings.jellyfinUrl.trim().replace(/\/$/, "");
-  if (!base) throw new JellyfinError("Jellyfin URL is not set");
-  if (!settings.jellyfinApiKey.trim()) {
-    throw new JellyfinError("Jellyfin API key is not set");
-  }
-
-  const timeoutMs = init?.timeoutMs ?? DEFAULT_TIMEOUT_MS;
+): Promise<Response> {
+  const { url, apiKey } = jellyfinUrl(settings, path);
+  const { timeoutMs: timeoutOpt, ...fetchInit } = init || {};
+  const timeoutMs = timeoutOpt ?? DEFAULT_TIMEOUT_MS;
   const controller = new AbortController();
   const timer = setTimeout(() => controller.abort(), timeoutMs);
+  const method = (fetchInit.method || "GET").toUpperCase();
 
   try {
-    const res = await fetch(`${base}${path}`, {
-      ...init,
-      headers: { ...authHeaders(settings.jellyfinApiKey), ...(init?.headers || {}) },
+    // Empty string body forces Content-Length: 0 on POST/PUT — some proxies
+    // (nginx/Traefik) mishandle bodiless POST and return 502.
+    const needsEmptyBody =
+      fetchInit.body === undefined && (method === "POST" || method === "PUT");
+
+    return await fetch(url, {
+      ...fetchInit,
+      method,
+      headers: {
+        ...authHeaders(apiKey),
+        ...(fetchInit.headers || {}),
+      },
+      body: needsEmptyBody ? "" : fetchInit.body,
       cache: "no-store",
       signal: controller.signal,
     });
-    if (!res.ok) {
-      let detail = "";
-      try {
-        detail = (await res.text()).slice(0, 200);
-      } catch {
-        // ignore body read failures
-      }
-      throw new JellyfinError(
-        `Jellyfin request failed (${res.status})${detail ? `: ${detail}` : ""}`,
-        res.status,
-      );
-    }
-    return (await res.json()) as T;
   } catch (err) {
     if (err instanceof Error && err.name === "AbortError") {
       throw new JellyfinError(
@@ -63,7 +85,10 @@ async function jellyfinFetch<T>(
         504,
       );
     }
-    if (err instanceof Error && /fetch failed|econn|enotfound/i.test(err.message)) {
+    if (
+      err instanceof Error &&
+      /fetch failed|econn|enotfound|cert|ssl|tls/i.test(err.message)
+    ) {
       throw new JellyfinError(
         `Could not reach the Jellyfin server at ${settings.jellyfinUrl}`,
       );
@@ -72,6 +97,54 @@ async function jellyfinFetch<T>(
   } finally {
     clearTimeout(timer);
   }
+}
+
+async function jellyfinFetch<T>(
+  settings: AppSettings,
+  path: string,
+  init?: RequestInit & { timeoutMs?: number },
+): Promise<T> {
+  const res = await jellyfinRequest(settings, path, init);
+  if (!res.ok) {
+    let detail = "";
+    try {
+      detail = (await res.text()).slice(0, 200);
+    } catch {
+      // ignore body read failures
+    }
+    throw new JellyfinError(
+      `Jellyfin request failed (${res.status})${detail ? `: ${detail}` : ""}${elevationHint(res.status)}`,
+      res.status,
+    );
+  }
+  if (res.status === 204) return undefined as T;
+  const text = await res.text();
+  if (!text) return undefined as T;
+  return JSON.parse(text) as T;
+}
+
+/** POST that expects 204/empty success (library scan, item refresh). */
+async function jellyfinPostEmpty(
+  settings: AppSettings,
+  path: string,
+  failureLabel: string,
+  timeoutMs = 30_000,
+): Promise<void> {
+  const res = await jellyfinRequest(settings, path, {
+    method: "POST",
+    timeoutMs,
+  });
+  if (res.ok || res.status === 204) return;
+  let detail = "";
+  try {
+    detail = (await res.text()).slice(0, 200);
+  } catch {
+    // ignore
+  }
+  throw new JellyfinError(
+    `${failureLabel} (${res.status})${detail ? `: ${detail}` : ""}${elevationHint(res.status)}`,
+    res.status,
+  );
 }
 
 interface JellyfinItemDto {
@@ -179,33 +252,68 @@ export function buildPathMatcher(
   };
 }
 
-/** Ask Jellyfin to rescan all libraries so new files get metadata. */
+/**
+ * Ask Jellyfin to rescan all libraries so new files get metadata.
+ * Tries /Library/Refresh first, then the scheduled "Scan Media Library" task.
+ */
 export async function triggerLibraryScan(settings: AppSettings): Promise<void> {
-  const base = settings.jellyfinUrl.trim().replace(/\/$/, "");
-  const timeoutMs = 15_000;
-  const controller = new AbortController();
-  const timer = setTimeout(() => controller.abort(), timeoutMs);
   try {
-    const res = await fetch(`${base}/Library/Refresh`, {
-      method: "POST",
-      headers: authHeaders(settings.jellyfinApiKey),
-      cache: "no-store",
-      signal: controller.signal,
-    });
-    if (!res.ok && res.status !== 204) {
-      throw new JellyfinError(
-        `Jellyfin library scan failed (${res.status})`,
-        res.status,
-      );
-    }
+    await jellyfinPostEmpty(
+      settings,
+      "/Library/Refresh",
+      "Jellyfin library scan failed",
+    );
+    return;
   } catch (err) {
-    if (err instanceof Error && err.name === "AbortError") {
-      throw new JellyfinError("Jellyfin library scan request timed out", 504);
+    // Fall through to scheduled task when Refresh is blocked or unavailable.
+    if (
+      !(err instanceof JellyfinError) ||
+      (err.status !== 401 &&
+        err.status !== 403 &&
+        err.status !== 404 &&
+        err.status !== 405 &&
+        err.status !== 502 &&
+        err.status !== 503)
+    ) {
+      throw err;
     }
-    throw err;
-  } finally {
-    clearTimeout(timer);
   }
+
+  await startScanMediaLibraryTask(settings);
+}
+
+interface ScheduledTaskDto {
+  Id?: string;
+  Key?: string;
+  Name?: string;
+}
+
+/** Start Jellyfin's built-in Scan Media Library scheduled task. */
+async function startScanMediaLibraryTask(
+  settings: AppSettings,
+): Promise<void> {
+  const tasks = await jellyfinFetch<ScheduledTaskDto[]>(
+    settings,
+    "/ScheduledTasks",
+    { timeoutMs: 20_000 },
+  );
+  const scanTask = (tasks || []).find(
+    (t) =>
+      t.Id &&
+      (t.Key === "RefreshLibrary" ||
+        /scan media library/i.test(t.Name || "")),
+  );
+  if (!scanTask?.Id) {
+    throw new JellyfinError(
+      "Could not find Jellyfin's Scan Media Library task",
+      404,
+    );
+  }
+  await jellyfinPostEmpty(
+    settings,
+    `/ScheduledTasks/Running/${encodeURIComponent(scanTask.Id)}`,
+    "Jellyfin library scan failed",
+  );
 }
 
 export { normalizePath };
@@ -263,38 +371,15 @@ export async function refreshJellyfinItem(
   settings: AppSettings,
   itemId: string,
 ): Promise<void> {
-  const base = settings.jellyfinUrl.trim().replace(/\/$/, "");
   const params = new URLSearchParams({
     metadataRefreshMode: "FullRefresh",
     imageRefreshMode: "FullRefresh",
     replaceAllMetadata: "false",
     replaceAllImages: "false",
   });
-  const timeoutMs = 15_000;
-  const controller = new AbortController();
-  const timer = setTimeout(() => controller.abort(), timeoutMs);
-  try {
-    const res = await fetch(
-      `${base}/Items/${encodeURIComponent(itemId)}/Refresh?${params.toString()}`,
-      {
-        method: "POST",
-        headers: authHeaders(settings.jellyfinApiKey),
-        cache: "no-store",
-        signal: controller.signal,
-      },
-    );
-    if (!res.ok && res.status !== 204) {
-      throw new JellyfinError(
-        `Jellyfin metadata refresh failed (${res.status})`,
-        res.status,
-      );
-    }
-  } catch (err) {
-    if (err instanceof Error && err.name === "AbortError") {
-      throw new JellyfinError("Jellyfin metadata refresh request timed out", 504);
-    }
-    throw err;
-  } finally {
-    clearTimeout(timer);
-  }
+  await jellyfinPostEmpty(
+    settings,
+    `/Items/${encodeURIComponent(itemId)}/Refresh?${params.toString()}`,
+    "Jellyfin metadata refresh failed",
+  );
 }
